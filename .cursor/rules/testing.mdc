@@ -1,0 +1,84 @@
+---
+description: Testing guidelines, patterns, and test file organization
+globs: ['tests/**/*.py', 'test_*.py', '**/*_test.py']
+alwaysApply: false
+---
+
+# Testing Guidelines
+
+## Testing Strategy
+
+- **Unit Tests:** Test individual functions/methods in isolation
+- **Integration Tests:** Test full workflows (backup, restore)
+- **Manual Testing:** Test with real Docker containers
+- **Test Data:** Use test containers with known data
+
+## Test File Organization
+
+```
+tests/
+├── test_config.py
+├── test_docker_backup.py
+├── test_backup_runner.py
+├── test_restore.py
+├── test_tui.py
+├── test_remote.py
+└── test_rotation.py
+```
+
+## Testing Patterns
+
+- Use pytest for testing framework
+- Mock Docker client for unit tests
+- Use real Docker for integration tests
+- Test error conditions and edge cases
+- Verify data integrity after restore
+
+## Test Structure
+
+```python
+import pytest
+from unittest.mock import Mock, patch
+from bbackup.config import Config
+from bbackup.docker_backup import DockerBackup
+
+class TestDockerBackup:
+    def test_backup_container_config(self):
+        """Test container config backup."""
+        # Setup
+        config = Config()
+        docker_backup = DockerBackup(config)
+        
+        # Test
+        result = docker_backup.backup_container_config("test_container", Path("/tmp"))
+        
+        # Assert
+        assert result is True
+```
+
+## Mocking Docker
+
+```python
+@patch('bbackup.docker_backup.docker.from_env')
+def test_docker_connection(mock_docker):
+    """Test Docker connection."""
+    mock_client = Mock()
+    mock_docker.return_value = mock_client
+    
+    docker_backup = DockerBackup(Config())
+    assert docker_backup.client == mock_client
+```
+
+## Integration Testing
+
+- Use real Docker containers for integration tests
+- Create test containers with known data
+- Verify backup and restore operations
+- Clean up test containers after tests
+
+## Test Coverage Goals
+
+- Core backup operations: 80%+
+- Restore operations: 80%+
+- Configuration: 90%+
+- Error handling: 70%+

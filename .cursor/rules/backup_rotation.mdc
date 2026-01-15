@@ -1,0 +1,75 @@
+---
+description: Backup rotation and retention policy implementation patterns
+globs: ['bbackup/rotation.py', 'bbackup/backup_runner.py']
+alwaysApply: false
+---
+
+# Backup Rotation & Retention
+
+## Current Status
+
+⚠️ **CRITICAL:** The `BackupRotation` class is fully implemented but **NEVER INTEGRATED** into the backup workflow. It's imported in `backup_runner.py` but never instantiated or used.
+
+## Rotation Integration Pattern (TODO)
+
+```python
+# In backup_runner.py
+from .rotation import BackupRotation
+
+class BackupRunner:
+    def __init__(self, config: Config, status: BackupStatus):
+        # ... existing code ...
+        self.rotation = BackupRotation(config.retention)  # ← Add this
+    
+    def upload_to_remotes(self, ...):
+        # ... after successful upload ...
+        
+        # Check storage quota and cleanup
+        for remote in remotes:
+            quota_status = self.rotation.check_storage_quota(remote, remote_path)
+            if quota_status["cleanup_needed"]:
+                backups = self.remote_mgr.list_backups(remote)
+                to_keep, to_delete = self.rotation.filter_backups_by_retention(
+                    backups, remote_path
+                )
+                deleted = self.rotation.cleanup_old_backups(
+                    remote, remote_path, to_delete
+                )
+                self.status.add_warning(f"Cleaned up {deleted} old backups from {remote.name}")
+```
+
+## Retention Policy
+
+- **Daily:** Keep N most recent daily backups
+- **Weekly:** Keep N weekly backups (typically Sunday backups)
+- **Monthly:** Keep N monthly backups (first of month)
+
+## Storage Quota Management
+
+- Check quota after each upload
+- Warn when storage exceeds warning threshold
+- Automatically cleanup when cleanup threshold reached
+- Delete oldest backups first (configurable strategy)
+
+## Backup Categorization
+
+```python
+def get_backup_age_category(self, backup_date: datetime) -> str:
+    """Categorize backup by age."""
+    age = datetime.now() - backup_date
+    if age.days == 0:
+        return "daily"
+    elif age.days < 7:
+        return "daily"
+    elif age.days < 30:
+        return "weekly"
+    else:
+        return "monthly"
+```
+
+## Cleanup Strategy
+
+- Filter backups by retention policy
+- Calculate which backups to keep vs delete
+- Delete backups from remote storage
+- Support both local and rclone remotes

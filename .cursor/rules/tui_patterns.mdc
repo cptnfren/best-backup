@@ -1,0 +1,87 @@
+---
+description: Rich TUI interface patterns and live dashboard implementation
+globs: ['bbackup/tui.py', 'bbackup/backup_runner.py']
+alwaysApply: false
+---
+
+# TUI (Terminal User Interface) Patterns
+
+## TUI Component Structure
+
+- Use Rich library for all UI components
+- Keep UI logic in `tui.py`
+- Separate status tracking from UI rendering
+- Use `BackupStatus` for thread-safe status updates
+
+## Status Tracking Pattern
+
+```python
+class BackupStatus:
+    """Thread-safe status tracker."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.status = "idle"
+        self.current_action = ""
+        self.current_item = ""
+        self.completed_items = 0
+        self.total_items = 0
+        self.errors = []
+    
+    def update(self, **kwargs):
+        """Update status (thread-safe)."""
+        with self.lock:
+            # Update status fields
+```
+
+## Live Dashboard Pattern
+
+```python
+class BackupTUI:
+    def create_live_dashboard(self) -> Layout:
+        """Create live-updating dashboard (BTOP-like)."""
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header", size=5),
+            Layout(name="main", ratio=2),
+            Layout(name="progress", size=8),
+            Layout(name="status", size=6),
+            Layout(name="footer", size=3),
+        )
+        # Update from BackupStatus
+        return layout
+    
+    def run_with_live_dashboard(self, operation: Callable):
+        """Run operation with live dashboard."""
+        operation_thread = threading.Thread(target=operation, daemon=True)
+        operation_thread.start()
+        
+        with Live(self.create_live_dashboard(), refresh_per_second=4, screen=True) as live:
+            while operation_thread.is_alive():
+                # Handle keyboard input
+                # Update display
+                live.update(self.create_live_dashboard())
+```
+
+## TUI Best Practices
+
+- Update UI at 4 updates/second (`refresh_per_second=4`)
+- Handle keyboard input non-blocking
+- Show progress, ETA, current item
+- Display errors and warnings prominently
+- Use color coding (green=success, red=error, yellow=warning)
+- Thread-safe status updates (use locks)
+
+## Keyboard Controls
+
+- **Q:** Quit/Cancel backup (implemented)
+- **P:** Pause/Resume backup (implemented)
+- **S:** Skip current item (TODO: implement)
+- **H:** Help screen (TODO: implement)
+
+## Status Updates
+
+Always update `BackupStatus` during operations:
+- `status.update(action="...", item="...", completed=N, total=M)`
+- `status.containers_status[container] = "success" | "failed"`
+- `status.add_error("...")` for errors
+- `status.add_warning("...")` for warnings

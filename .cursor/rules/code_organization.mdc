@@ -1,0 +1,96 @@
+---
+description: Code organization patterns, structure, and style guidelines for Python files
+globs: ['**/*.py']
+alwaysApply: true
+---
+
+# Code Organization & Style Guidelines
+
+## Module Structure Template
+
+```python
+"""
+Module description and purpose.
+"""
+
+# Standard library imports
+import os
+from pathlib import Path
+from typing import List, Optional, Dict
+
+# Third-party imports
+import docker
+from rich.console import Console
+
+# Local imports
+from .config import Config, BackupScope
+
+# Constants
+DEFAULT_TIMEOUT = 300
+
+# Classes
+class ModuleClass:
+    """Class docstring."""
+    
+    def __init__(self, config: Config):
+        """Initialize with config."""
+        self.config = config
+    
+    def public_method(self) -> bool:
+        """Public method docstring."""
+        pass
+    
+    def _private_method(self) -> None:
+        """Private method docstring."""
+        pass
+```
+
+## Import Organization
+
+1. Standard library imports (grouped)
+2. Third-party imports (grouped)
+3. Local imports (from `.config`, `.docker_backup`, etc.)
+4. Constants
+5. Classes and functions
+
+## Code Style
+
+- Follow PEP 8 conventions
+- Use type hints for ALL function signatures
+- Use dataclasses for configuration objects (`@dataclass`)
+- Prefer `pathlib.Path` over `os.path`
+- Use f-strings for string formatting
+- Keep functions small and focused
+- Return structured data (dicts, dataclasses) rather than printing
+
+## Class Design Principles
+
+- Use dataclasses for configuration objects
+- Keep classes focused on single responsibility
+- Use dependency injection (pass Config, not global state)
+- Thread-safe status updates (use locks for shared state)
+
+## Function Design Principles
+
+- Use type hints for all parameters and return types
+- Keep functions small and focused
+- Return structured data (dicts, dataclasses) rather than printing
+- Use `Optional[]` for nullable returns
+- Document complex logic with comments
+
+## File Naming
+
+- Use lowercase with underscores: `backup_runner.py`
+- Descriptive names: `docker_backup.py` not `docker.py`
+- Match module purpose: `tui.py` for TUI, `restore.py` for restore
+
+## Module Responsibilities
+
+- `cli.py`: CLI command definitions, argument parsing, command orchestration
+- `config.py`: Configuration loading, parsing, validation, dataclasses
+- `docker_backup.py`: Docker API operations, container/volume/network backup
+- `backup_runner.py`: Backup workflow orchestration, status tracking
+- `restore.py`: Restore operations, container/volume/network restoration
+- `tui.py`: Rich TUI components, live dashboard, interactive selection
+- `remote.py`: Remote storage abstraction, upload/download operations
+- `rotation.py`: Backup retention policies, cleanup, quota management

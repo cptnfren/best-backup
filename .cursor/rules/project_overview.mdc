@@ -1,0 +1,65 @@
+---
+description: Project overview, scope, and core principles for bbackup Docker backup tool
+alwaysApply: true
+---
+
+# bbackup - Project Overview
+
+## Project Purpose
+
+**bbackup** is a comprehensive Docker backup tool with a Rich TUI interface. It provides efficient backup and restore of Docker containers, volumes, networks, and configurations with support for incremental backups, remote storage (rclone, SFTP, local), and intelligent rotation policies.
+
+**Core Purpose:** Provide a production-ready, user-friendly Docker backup solution with:
+- Rich terminal UI (BTOP-like interface)
+- Hybrid backup strategy (rsync for volumes, tar for metadata)
+- Multiple remote storage options
+- Backup rotation and retention policies
+- Full restore capabilities
+
+## Technology Stack
+
+- **Language:** Python 3.8+
+- **CLI Framework:** Click 8.1.7+
+- **TUI Library:** Rich 13.7.0+
+- **Docker SDK:** docker 7.0.0+
+- **Config:** PyYAML 6.0.1+
+- **SFTP:** paramiko 3.4.0+
+- **External Tools:** rsync (system), rclone (optional)
+
+## Project Structure
+
+```
+best-backup/
+├── bbackup/              # Main package
+│   ├── __init__.py      # Package metadata
+│   ├── cli.py           # CLI commands
+│   ├── config.py        # Configuration
+│   ├── docker_backup.py # Docker operations
+│   ├── backup_runner.py # Backup orchestration
+│   ├── restore.py       # Restore operations
+│   ├── tui.py           # Rich TUI
+│   ├── remote.py        # Remote storage
+│   └── rotation.py      # Rotation/retention
+├── bbackup.py           # Main executable
+├── config.yaml.example  # Config template
+└── requirements.txt     # Dependencies
+```
+
+## Core Principles
+
+- Follow existing patterns and conventions
+- Maintain type safety with type hints
+- Provide clear error messages
+- Update status tracking for TUI
+- Keep modules focused and single-purpose
+- Document all changes
+- Test thoroughly
+
+## Known Critical Issues
+
+1. **Incremental Backups:** `--link-dest` not implemented in `backup_volume()`
+2. **Backup Rotation:** `BackupRotation` class exists but never instantiated/used
+3. **Logging System:** Config exists but no Python logging implementation
+4. **Volume Compression:** Only metadata compressed, volumes uncompressed
+
+See `DEFICIENCY_REPORT.md` and `IMPLEMENTATION_ROADMAP.md` for details.

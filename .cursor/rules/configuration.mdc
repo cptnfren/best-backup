@@ -1,0 +1,69 @@
+---
+description: Configuration management patterns and YAML config structure
+globs: ['bbackup/config.py', 'config.yaml.example']
+alwaysApply: false
+---
+
+# Configuration Management
+
+## Configuration Loading Priority
+
+1. CLI arguments (highest priority)
+2. Config file (`~/.config/bbackup/config.yaml`)
+3. Default values (lowest priority)
+
+## Configuration File Locations (in order)
+
+1. `~/.config/bbackup/config.yaml`
+2. `~/.bbackup/config.yaml`
+3. `/etc/bbackup/config.yaml`
+4. `./config.yaml` (current directory)
+
+## Configuration Structure
+
+- Use dataclasses for type safety (`BackupScope`, `BackupSet`, `RemoteStorage`, etc.)
+- Validate configuration on load
+- Provide sensible defaults
+- Support multiple config file locations (fallback chain)
+
+## Configuration Dataclass Pattern
+
+```python
+@dataclass
+class BackupScope:
+    """Backup scope configuration."""
+    containers: bool = True
+    volumes: bool = True
+    networks: bool = True
+    configs: bool = True
+
+@dataclass
+class RemoteStorage:
+    """Remote storage configuration."""
+    name: str
+    enabled: bool = False
+    type: str = "local"  # local, rclone, sftp
+    path: str = ""
+    # ... other fields
+```
+
+## Configuration Usage
+
+- Pass config objects, not raw dicts
+- Access config via `config.data` for raw YAML data
+- Use typed dataclasses for type safety
+- Validate required fields on load
+
+## Adding New Configuration
+
+1. Add to `config.yaml.example` with documentation
+2. Add dataclass in `config.py` if needed
+3. Parse in `Config._parse_config()`
+4. Use in relevant modules
+5. Update documentation
+
+## Unused Configuration (TODO)
+
+- `logging.*` - Config exists but no Python logging implementation
+- `docker.timeout` - Config exists but not applied to Docker client
+- `compression.*` for volumes - Only used for metadata archives

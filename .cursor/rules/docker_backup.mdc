@@ -1,0 +1,81 @@
+---
+description: Docker backup and restore operation patterns and best practices
+globs: ['bbackup/docker_backup.py', 'bbackup/restore.py', 'bbackup/backup_runner.py']
+alwaysApply: false
+---
+
+# Docker Backup & Restore Patterns
+
+## Docker Backup Best Practices
+
+1. **Volume Access:** Use temporary Docker containers to access volumes (avoid permission issues)
+2. **Incremental Backups:** Use rsync `--link-dest` for space-efficient backups (TODO: implement)
+3. **Compression:** Compress metadata, consider compressing volumes for large datasets
+4. **Error Recovery:** Handle Docker API errors gracefully, retry transient failures
+5. **Data Integrity:** Verify backups can be restored, test restore operations
+
+## Volume Backup Pattern
+
+```python
+def backup_volume(self, volume_name: str, backup_dir: Path, incremental: bool = False) -> bool:
+    """Backup Docker volume using Docker container and rsync."""
+    # Use temporary container to access volume (avoids permission issues)
+    temp_container = self.client.containers.run(
+        "alpine:latest",
+        command="sleep 3600",
+        volumes={volume_name: {"bind": "/volume_data", "mode": "ro"}},
+        detach=True,
+    )
+    
+    # Use rsync via docker exec
+    # TODO: Add --link-dest when incremental=True
+    # prev_backup = self._find_previous_volume_backup(volume_name, backup_dir.parent)
+    # if prev_backup:
+    #     rsync_cmd.extend(["--link-dest", str(prev_backup)])
+    
+    # Cleanup temporary container
+    temp_container.stop()
+    temp_container.remove()
+```
+
+## Backup Workflow
+
+1. **Initialize:** Load config, connect to Docker, setup status tracking
+2. **Select:** Determine containers/volumes/networks to backup
+3. **Prepare:** Create backup directory, setup staging area
+4. **Backup:** Container configs, logs, volumes, networks
+5. **Archive:** Create compressed metadata archive
+6. **Upload:** Upload to remote storage destinations
+7. **Rotate:** Check retention policies, cleanup old backups (TODO: integrate)
+8. **Report:** Display results, errors, summary
+
+## Restore Pattern
+
+```python
+def restore_volume(self, volume_name: str, backup_path: Path, new_name: Optional[str] = None) -> bool:
+    """Restore Docker volume from backup."""
+    # Create new volume
+    volume = self.client.volumes.create(name=new_name or volume_name)
+    
+    # Use temporary container to restore data
+    temp_container = self.client.containers.run(
+        "alpine:latest",
+        command="sleep 3600",
+        volumes={volume.name: {"bind": "/volume_data", "mode": "rw"}},
+        detach=True,
+    )
+    
+    # Copy backup data to container
+    subprocess.run(["docker", "cp", f"{backup_path}/.", f"{temp_container.name}:/volume_data/"])
+    
+    # Cleanup
+    temp_container.stop()
+    temp_container.remove()
+```
+
+## Resource Management
+
+- Always clean up temporary Docker containers
+- Use context managers or try/finally for cleanup
+- Handle container creation failures gracefully
+- Stop and remove containers even on errors

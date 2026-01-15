@@ -1,0 +1,82 @@
+---
+description: Development workflow, integration guidelines, and code review checklist
+alwaysApply: true
+---
+
+# Development Workflow & Guidelines
+
+## Development Workflow
+
+1. **Feature Development:**
+   - Create feature branch
+   - Implement feature following patterns
+   - Add tests
+   - Update documentation
+   - Submit for review
+
+2. **Bug Fixes:**
+   - Identify root cause
+   - Fix with minimal changes
+   - Add regression test
+   - Update documentation if needed
+
+3. **Code Changes:**
+   - Follow existing patterns
+   - Maintain backward compatibility
+   - Update type hints
+   - Add error handling
+   - Update status tracking (if applicable)
+
+## Integration Guidelines
+
+- **New Features:** Must integrate with existing workflow
+- **Status Tracking:** Update `BackupStatus` for TUI display
+- **Error Handling:** Add errors to `BackupStatus.errors`
+- **Configuration:** Add config options to `config.py` and `config.yaml.example`
+- **CLI Commands:** Add to `cli.py` following Click patterns
+
+## Code Review Checklist
+
+- [ ] Type hints added
+- [ ] Error handling implemented
+- [ ] Status tracking updated (if applicable)
+- [ ] Documentation updated
+- [ ] Tests added/updated
+- [ ] Follows project patterns
+- [ ] No hardcoded values (use config)
+- [ ] Thread-safe (if multi-threaded)
+
+## When Making Changes
+
+1. **Understand Context:** Read relevant modules before changing
+2. **Follow Patterns:** Match existing code style and patterns
+3. **Maintain Integration:** Ensure changes work with existing workflow
+4. **Update Status:** If modifying backup/restore, update `BackupStatus`
+5. **Error Handling:** Add proper error handling and reporting
+6. **Type Hints:** Add/update type hints for all functions
+7. **Documentation:** Update docstrings and README if needed
+
+## When Adding Features
+
+1. **Check Deficiency Reports:** See if feature is documented but missing
+2. **Follow Architecture:** Use existing modules, don't create new ones unnecessarily
+3. **Configuration:** Add config options if needed
+4. **CLI Integration:** Add CLI commands following Click patterns
+5. **TUI Integration:** Update TUI if feature affects user interaction
+6. **Testing:** Add tests for new features
+
+## When Refactoring
+
+1. **Maintain Functionality:** Don't break existing features
+2. **Update All References:** Change all usages of refactored code
+3. **Update Documentation:** Reflect changes in docs
+4. **Test Thoroughly:** Ensure refactoring doesn't break tests
+
+## Code Quality Standards
+
+- **Type Safety:** Use type hints, avoid `Any` when possible
+- **Error Handling:** Never silently fail, always report errors
+- **Thread Safety:** Use locks for shared state in multi-threaded code
+- **Resource Management:** Clean up temporary resources (Docker containers, files)
+- **Configuration:** Use config objects, not hardcoded values
+- **Status Updates:** Update `BackupStatus` for all operations

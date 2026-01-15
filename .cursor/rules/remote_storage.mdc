@@ -1,0 +1,64 @@
+---
+description: Remote storage integration patterns for rclone, SFTP, and local storage
+globs: ['bbackup/remote.py', 'bbackup/backup_runner.py']
+alwaysApply: false
+---
+
+# Remote Storage Patterns
+
+## Remote Storage Abstraction
+
+- Support multiple remote types: `local`, `rclone`, `sftp`
+- Use `RemoteStorage` dataclass for configuration
+- Implement upload methods per remote type
+- Support progress callbacks for long operations
+
+## Remote Storage Pattern
+
+```python
+class RemoteStorageManager:
+    def upload_backup(self, remote: RemoteStorage, backup_path: Path, 
+                     backup_name: str, progress_callback=None) -> bool:
+        """Upload backup to remote storage."""
+        remote_path = os.path.join(remote.path, backup_name)
+        
+        if remote.type == "rclone":
+            return self.upload_to_rclone(remote, backup_path, remote_path, progress_callback)
+        elif remote.type == "sftp":
+            return self.upload_to_sftp(remote, backup_path, remote_path)
+        elif remote.type == "local":
+            return self.upload_to_local(remote, backup_path, remote_path)
+```
+
+## rclone Integration
+
+- Check if rclone is installed (`shutil.which("rclone")`)
+- Use `rclone copy` for uploads
+- Support progress callbacks via JSON output
+- Handle rclone errors gracefully
+
+## SFTP Integration
+
+- Use paramiko for SFTP connections
+- Support SSH key authentication
+- Recursively upload directories
+- Handle connection errors
+
+## Local Storage
+
+- Use `shutil.copytree` for directory copies
+- Ignore special files (sockets, broken symlinks)
+- Handle permission errors
+
+## Progress Tracking
+
+- TODO: Connect progress callbacks to TUI
+- Parse rclone progress output
+- Update `BackupStatus` with upload progress
+- Show progress in live dashboard
+
+## Multiple Remotes
+
+- Support uploading to multiple remotes
+- Handle failures per remote (don't stop on single failure)
+- Track status per remote in `BackupStatus.remote_status`

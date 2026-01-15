@@ -1,0 +1,139 @@
+---
+description: Documentation standards, maintenance requirements, and update guidelines
+globs: ['*.md', '**/*.md']
+alwaysApply: true
+---
+
+# Documentation Standards & Maintenance
+
+## Documentation Maintenance Policy
+
+**CRITICAL REQUIREMENT:** Documentation must be kept minimal, current, and updated with every code change.
+
+### Core Principles
+
+1. **Minimal Documentation:** Keep documentation concise and focused
+   - Remove outdated information immediately
+   - Don't duplicate information across files
+   - One source of truth per topic
+
+2. **Frequent Updates:** Documentation must be updated when:
+   - New features are implemented
+   - Existing features are modified
+   - Code structure changes
+   - Configuration options change
+   - Breaking changes are introduced
+
+3. **Context Preservation:** Maintain documentation to preserve project context
+   - Update README.md when features change
+   - Update PROJECT_SUMMARY.md when architecture changes
+   - Keep deficiency reports current (mark items as fixed)
+   - Update QUICKSTART.md when setup changes
+
+## Code Documentation
+
+- **Module docstrings:** Describe purpose and key functionality
+- **Class docstrings:** Describe class purpose and usage
+- **Function docstrings:** Describe parameters, return values, exceptions
+- **Inline comments:** Explain complex logic, not obvious code
+
+## Documentation Files
+
+### User-Facing (Root Directory)
+- **README.md:** Main user documentation - MUST be updated when features change
+- **QUICKSTART.md:** Quick start guide - MUST be updated when setup changes
+- **PROJECT_SUMMARY.md:** Architecture overview - MUST be updated when architecture changes
+
+### Development (docs/ Directory)
+- **docs/reports/:** Deficiency and analysis reports - Update when issues are fixed
+- **docs/tests/:** Test results - Update when new tests are added
+- **docs/TUI_IMPROVEMENTS.md:** TUI development notes - Update when TUI changes
+
+## Documentation Update Checklist
+
+When implementing changes, ALWAYS:
+
+- [ ] Update README.md if feature affects users
+- [ ] Update QUICKSTART.md if setup/usage changes
+- [ ] Update PROJECT_SUMMARY.md if architecture changes
+- [ ] Update relevant docstrings in code
+- [ ] Remove outdated documentation
+- [ ] Update deficiency reports (mark fixed items)
+- [ ] Keep documentation minimal and focused
+
+## Documentation Update Workflow
+
+1. **During Development:**
+   - Update documentation as you code
+   - Don't leave documentation updates for later
+   - Update docstrings immediately when functions change
+
+2. **Before Committing:**
+   - Review all changed files
+   - Update relevant documentation
+   - Remove any outdated information
+   - Verify documentation accuracy
+
+3. **After Feature Completion:**
+   - Update README.md feature list
+   - Update PROJECT_SUMMARY.md if needed
+   - Mark items as complete in deficiency reports
+   - Update QUICKSTART.md if usage changes
+
+## Documentation Structure Rules
+
+- **One topic per document:** Don't mix concerns
+- **Keep it short:** Prefer multiple focused docs over one long doc
+- **Remove redundancy:** Don't repeat information
+- **Link, don't duplicate:** Reference other docs instead of copying content
+
+## When to Remove Documentation
+
+- Outdated feature descriptions
+- Completed roadmap items (move to changelog)
+- Fixed deficiency items (update report, don't delete)
+- Deprecated features (mark as deprecated, remove after version cycle)
+
+## Documentation Quality Standards
+
+- **Accuracy:** Must reflect current code state
+- **Completeness:** Cover all user-facing features
+- **Clarity:** Clear and understandable
+- **Currency:** Updated with every change
+- **Minimalism:** No unnecessary information
+
+## Docstring Format
+
+```python
+def backup_volume(self, volume_name: str, backup_dir: Path, incremental: bool = False) -> bool:
+    """
+    Backup Docker volume using Docker container and rsync.
+    
+    Args:
+        volume_name: Name of the Docker volume to backup
+        backup_dir: Directory to store backup
+        incremental: Whether to use incremental backup (--link-dest)
+    
+    Returns:
+        True if backup successful, False otherwise
+    
+    Raises:
+        RuntimeError: If Docker connection fails
+    """
+```
+
+## Markdown Documentation
+
+- Use clear headings and structure
+- Include code examples
+- Document configuration options
+- Provide usage examples
+- Keep documentation up-to-date with code
+
+## When to Update Documentation
+
+- Adding new features
+- Changing existing behavior
+- Fixing bugs that affect user experience
+- Adding configuration options
+- Changing CLI commands

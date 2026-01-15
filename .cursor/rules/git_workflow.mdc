@@ -1,0 +1,197 @@
+---
+description: Git workflow, commit guidelines, and version control practices
+alwaysApply: true
+---
+
+# Git Workflow & Version Control
+
+## Commit Policy
+
+**REQUIREMENT:** All changes must be committed to local Git before completion. Documentation updates are mandatory with every commit.
+
+## Commit Workflow
+
+### Before Committing
+
+1. **Review Changes:**
+   ```bash
+   git status
+   git diff
+   ```
+
+2. **Update Documentation:**
+   - Update README.md if features changed
+   - Update relevant docstrings
+   - Remove outdated documentation
+   - Update deficiency reports if issues fixed
+
+3. **Verify Code Quality:**
+   - Check for linter errors
+   - Verify imports work
+   - Test basic functionality
+
+### Commit Message Format
+
+```
+<type>: <short description>
+
+<detailed description if needed>
+
+- What changed
+- Why it changed
+- Any breaking changes
+```
+
+**Types:**
+- `feat:` - New feature
+- `fix:` - Bug fix
+- `docs:` - Documentation changes
+- `refactor:` - Code refactoring
+- `test:` - Test additions/changes
+- `chore:` - Maintenance tasks
+
+**Examples:**
+```
+feat: implement incremental backup with --link-dest
+
+Add rsync --link-dest support for incremental volume backups.
+Uses _find_previous_volume_backup() to locate previous backup.
+
+- Modified backup_volume() to use --link-dest when incremental=True
+- Updated documentation in README.md
+- Added tests for incremental backup functionality
+```
+
+```
+docs: update README with restore functionality status
+
+Restore functionality is fully implemented but was marked as
+roadmap item. Updated README to reflect current status.
+
+- Updated roadmap section
+- Added link to test results
+```
+
+## Commit Checklist
+
+Before every commit:
+
+- [ ] Code changes complete and tested
+- [ ] Documentation updated (README, docstrings, etc.)
+- [ ] Outdated documentation removed
+- [ ] No linter errors
+- [ ] Imports verified
+- [ ] Commit message follows format
+- [ ] All related files included
+
+## Git Workflow Steps
+
+### 1. Stage Changes
+```bash
+# Review what will be committed
+git status
+
+# Stage specific files
+git add <file1> <file2>
+
+# Or stage all changes
+git add .
+```
+
+### 2. Commit with Message
+```bash
+git commit -m "type: description" -m "detailed description"
+```
+
+### 3. Verify Commit
+```bash
+git log -1
+git show
+```
+
+## Pushing to GitHub
+
+**IMPORTANT:** Only push to GitHub upon explicit user request.
+
+### Before Pushing
+
+1. **Verify Local Commits:**
+   ```bash
+   git log --oneline
+   ```
+
+2. **Check Remote Status:**
+   ```bash
+   git fetch origin
+   git status
+   ```
+
+3. **Resolve Conflicts (if any):**
+   ```bash
+   git pull origin main  # or master
+   # Resolve conflicts
+   git add .
+   git commit -m "merge: resolve conflicts"
+   ```
+
+### Push Workflow
+
+```bash
+# Push to remote (only when user requests)
+git push origin main  # or master
+
+# Or push specific branch
+git push origin <branch-name>
+```
+
+## Branch Strategy
+
+- **main/master:** Production-ready code
+- **feature/***: New features
+- **fix/***: Bug fixes
+- **docs/***: Documentation updates
+
+## Documentation in Commits
+
+**REQUIREMENT:** Every commit that changes functionality MUST include documentation updates.
+
+- Code changes → Update docstrings
+- Feature additions → Update README.md
+- Architecture changes → Update PROJECT_SUMMARY.md
+- Setup changes → Update QUICKSTART.md
+
+## Git Ignore
+
+The `.gitignore` file should exclude:
+- `__pycache__/` directories
+- `*.pyc` files
+- Virtual environments
+- IDE files
+- User-specific config files
+- Build artifacts
+
+## Best Practices
+
+1. **Commit Often:** Small, focused commits
+2. **Document Always:** Update docs with every change
+3. **Review Before Commit:** Check what you're committing
+4. **Meaningful Messages:** Clear commit messages
+5. **Keep History Clean:** Don't commit temporary files
+6. **Sync Documentation:** Docs must match code state
+
+## After Reorganization
+
+When reorganizing files:
+1. Move files to new locations
+2. Update any references/links
+3. Commit reorganization as single commit:
+   ```bash
+   git add .
+   git commit -m "chore: reorganize repository structure
+
+   - Move documentation to docs/ directory
+   - Move scripts to scripts/ directory
+   - Create .cursor/rules/ structure
+   - Update documentation references
+   - Add .gitignore and structure docs"
+   ```

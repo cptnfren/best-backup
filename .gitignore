@@ -33,8 +33,10 @@ ENV/
 *.swo
 *~
 
-# Cursor
-.cursor/
+# Cursor (track rules, ignore other files)
+.cursor/*
+!.cursor/rules/
+!.cursor/rules/**/*.mdc
 
 # Testing
 .pytest_cache/

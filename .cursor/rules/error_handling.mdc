@@ -1,0 +1,59 @@
+---
+description: Error handling patterns and strategies for all operations
+globs: ['**/*.py']
+alwaysApply: true
+---
+
+# Error Handling Patterns
+
+## Error Handling Strategy
+
+1. **Docker Operations:** Catch `docker.errors.APIError`, return False or raise RuntimeError
+2. **File Operations:** Catch `IOError`, `OSError`, log and return False
+3. **Configuration:** Raise `ValueError` with descriptive message
+4. **User Input:** Validate early, provide clear error messages
+
+## Error Handling Template
+
+```python
+def operation_that_might_fail(self) -> bool:
+    """Operation that returns success/failure."""
+    try:
+        # Operation code
+        return True
+    except SpecificException as e:
+        self.logger.error(f"Operation failed: {e}")
+        return False
+    except Exception as e:
+        # Catch-all for unexpected errors
+        self.logger.error(f"Unexpected error: {e}")
+        return False
+```
+
+## Error Reporting
+
+- Use Rich console for user-facing errors
+- Log errors to file (when logging implemented)
+- Add errors to `BackupStatus.errors` for TUI display
+- Never silently fail - always report errors
+
+## Avoid Bare Exception Handlers
+
+❌ **Bad:**
+```python
+except:
+    pass
+```
+
+✅ **Good:**
+```python
+except (APIError, docker.errors.DockerException) as e:
+    # Specific exception handling
+```
+
+## Error Recovery
+
+- Handle Docker API errors gracefully
+- Retry transient failures when appropriate
+- Clean up resources on error (Docker containers, files)
+- Provide actionable error messages
