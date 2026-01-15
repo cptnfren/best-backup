@@ -65,6 +65,18 @@ class IncrementalSettings:
     min_file_size: int = 1048576  # 1MB
 
 
+@dataclass
+class EncryptionSettings:
+    """Encryption settings."""
+    enabled: bool = False
+    method: str = "symmetric"  # symmetric, asymmetric, both
+    symmetric: Dict[str, Any] = field(default_factory=dict)
+    asymmetric: Dict[str, Any] = field(default_factory=dict)
+    encrypt_volumes: bool = True
+    encrypt_configs: bool = True
+    encrypt_networks: bool = True
+
+
 class Config:
     """Main configuration class."""
     
@@ -75,6 +87,7 @@ class Config:
         self.remotes: Dict[str, RemoteStorage] = {}
         self.retention = RetentionPolicy()
         self.incremental = IncrementalSettings()
+        self.encryption = EncryptionSettings()
         self.scope = BackupScope()
         
         if self.config_path and os.path.exists(self.config_path):
@@ -199,6 +212,19 @@ class Config:
                 enabled=inc.get("enabled", True),
                 use_link_dest=inc.get("use_link_dest", True),
                 min_file_size=inc.get("min_file_size", 1048576),
+            )
+        
+        # Parse encryption settings
+        if "encryption" in self.data:
+            enc = self.data["encryption"]
+            self.encryption = EncryptionSettings(
+                enabled=enc.get("enabled", False),
+                method=enc.get("method", "symmetric"),
+                symmetric=enc.get("symmetric", {}),
+                asymmetric=enc.get("asymmetric", {}),
+                encrypt_volumes=enc.get("encrypt_volumes", True),
+                encrypt_configs=enc.get("encrypt_configs", True),
+                encrypt_networks=enc.get("encrypt_networks", True),
             )
     
     def get_staging_dir(self) -> str:

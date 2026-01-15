@@ -15,6 +15,7 @@ from docker.errors import DockerException, APIError
 
 from .config import Config
 from .logging import get_logger
+from .encryption import EncryptionManager
 
 logger = get_logger('restore')
 
@@ -243,6 +244,41 @@ class DockerRestore:
         except APIError:
             return False
     
+    def decrypt_backup_directory(self, backup_path: Path) -> Path:
+        """
+        Decrypt backup directory if encrypted.
+        
+        Args:
+            backup_path: Backup directory path (may be encrypted)
+        
+        Returns:
+            Path to decrypted backup directory (or original if not encrypted)
+        """
+        # Check if backup is encrypted
+        metadata_file = backup_path / "encryption_metadata.json"
+        if not metadata_file.exists():
+            logger.debug("Backup appears to be unencrypted")
+            return backup_path
+        
+        if not self.config.encryption.enabled:
+            logger.warning("Backup is encrypted but encryption is disabled in config")
+            return backup_path
+        
+        try:
+            logger.info("Decrypting backup directory...")
+            encryption_mgr = EncryptionManager(self.config.encryption)
+            decrypted_dir = encryption_mgr.decrypt_backup(backup_path)
+            
+            if decrypted_dir != backup_path:
+                logger.info(f"Backup decrypted: {decrypted_dir}")
+                return decrypted_dir
+            else:
+                logger.error("Decryption failed")
+                return backup_path
+        except Exception as e:
+            logger.error(f"Decryption error: {e}")
+            return backup_path
+    
     def restore_backup(
         self,
         backup_path: Path,
@@ -252,6 +288,11 @@ class DockerRestore:
         rename_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, any]:
         """Restore complete backup."""
+        backup_path = Path(backup_path)
+        
+        # Decrypt backup if encrypted
+        backup_path = self.decrypt_backup_directory(backup_path)
+        
         rename_map = rename_map or {}
         
         results = {

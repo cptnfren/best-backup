@@ -1,0 +1,60 @@
+# Sandbox Generation Configuration
+# Copy this to sandbox_config.yaml and customize as needed
+
+sandbox:
+  # Output directory for sandbox
+  output: /tmp/bbackup_sandbox
+  
+  # Target statistics (approximate)
+  file_count: 13000
+  total_size_mb: 150
+  
+  # Directory structure configuration
+  structure:
+    # Archive files (historical backups)
+    archives:
+      enabled: true
+      files_per_month: 96  # Files per month (distributed across days)
+      years: [2020, 2021, 2022, 2023]
+    
+    # Project files (source code projects)
+    projects:
+      enabled: true
+      files_per_project: 100  # Files per subdirectory (src, tests, docs, config)
+      project_types: [web, api, scripts]
+    
+    # Documentation files
+    documents:
+      enabled: true
+      markdown_count: 200  # Number of markdown documentation files
+      code_files: true  # Generate sample code files
+    
+    # Media files
+    media:
+      enabled: true
+      large_files:
+        enabled: true
+        count: 4  # Number of large files
+        sizes_mb: [15, 25, 30, 40]  # Sizes in MB
+      images:
+        enabled: true
+        count: 50  # Number of simulated image files
+    
+    # Data files (databases, logs, configs, binaries)
+    data:
+      enabled: true
+    
+    # Temporary files (cache, uploads, downloads)
+    temp:
+      enabled: true
+  
+  # System file harvesting
+  harvesting:
+    enabled: true
+    # Safe system file paths to copy (read-only)
+    safe_paths:
+      - /etc/os-release
+      - /etc/hostname
+      - /etc/passwd  # Public info, safe to copy
+    # Maximum size for harvested files (KB)
+    max_size_kb: 100

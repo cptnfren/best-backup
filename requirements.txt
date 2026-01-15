@@ -3,3 +3,5 @@ pyyaml>=6.0.1
 docker>=7.0.0
 click>=8.1.7
 paramiko>=3.4.0
+cryptography>=41.0.0
+requests>=2.31.0

@@ -2,6 +2,20 @@
 
 ## 5-Minute Setup
 
+### Option 1: Using Management Wrapper (Recommended)
+
+```bash
+# Run setup wizard (does everything automatically)
+python3 bbman.py setup
+
+# Launch application
+python3 bbman.py run backup
+```
+
+The setup wizard will check dependencies, create configuration, and guide you through initial setup.
+
+### Option 2: Manual Setup
+
 ### Step 1: Install Dependencies
 
 ```bash
@@ -22,6 +36,9 @@ sudo yum install rsync      # RHEL/CentOS
 
 # Or if installed system-wide:
 bbackup init-config
+
+# Or use management wrapper:
+python3 bbman.py setup
 ```
 
 ### Step 3: Edit Configuration

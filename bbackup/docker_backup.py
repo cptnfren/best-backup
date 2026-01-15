@@ -8,7 +8,7 @@ import json
 import subprocess
 import tarfile
 from pathlib import Path
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional, Set, Callable
 from datetime import datetime
 import docker
 from docker.errors import DockerException, APIError
@@ -104,7 +104,8 @@ class DockerBackup:
             logger.error(f"API error backing up container config {container_name}: {e}")
             return False
     
-    def backup_volume(self, volume_name: str, backup_dir: Path, incremental: bool = False) -> bool:
+    def backup_volume(self, volume_name: str, backup_dir: Path, incremental: bool = False,
+                     progress_callback: Optional[Callable[[str], None]] = None) -> bool:
         """Backup Docker volume using Docker container and rsync."""
         logger.info(f"Backing up volume: {volume_name} (incremental={incremental})")
         try:
@@ -142,9 +143,11 @@ class DockerBackup:
                 
                 if check_rsync.returncode == 0:
                     # Use rsync if available
+                    # Add --progress and --info=progress2 for detailed progress
                     rsync_cmd = [
                         "docker", "exec", temp_container_name,
-                        "rsync", "-av", "--delete", "/volume_data/", "/tmp/backup/"
+                        "rsync", "-av", "--delete", "--progress", "--info=progress2",
+                        "/volume_data/", "/tmp/backup/"
                     ]
                     
                     # Add --link-dest for incremental backups
@@ -173,7 +176,38 @@ class DockerBackup:
                         check=False,
                     )
                     
-                    result = subprocess.run(rsync_cmd, capture_output=True, text=True, check=False)
+                    # Run rsync with real-time output parsing for progress
+                    if progress_callback:
+                        process = subprocess.Popen(
+                            rsync_cmd,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            text=True,
+                            bufsize=1,
+                            universal_newlines=True
+                        )
+                        
+                        # Parse rsync progress output
+                        result_code = 0
+                        for line in process.stdout:
+                            if progress_callback:
+                                progress_callback(line)
+                            # Check for completion
+                            if process.poll() is not None:
+                                result_code = process.returncode
+                                break
+                        
+                        # Wait for process to complete
+                        if process.poll() is None:
+                            result_code = process.wait()
+                        
+                        # Create a result-like object
+                        class Result:
+                            def __init__(self, code):
+                                self.returncode = code
+                        result = Result(result_code)
+                    else:
+                        result = subprocess.run(rsync_cmd, capture_output=True, text=True, check=False)
                     
                     if result.returncode == 0:
                         # Copy from container to host

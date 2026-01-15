@@ -46,9 +46,23 @@ class BackupStatus:
         self.networks_status = {}
         self.remote_status = {}
         self.skip_current = False  # Flag to skip current item
+        self.encryption_status = "idle"  # idle, encrypting, encrypted, failed
+        
+        # Transfer metrics
+        self.bytes_transferred = 0  # Total bytes transferred
+        self.total_bytes = 0  # Total bytes to transfer (if known)
+        self.transfer_speed = 0.0  # Current transfer speed in MB/s
+        self.files_transferred = 0  # Number of files transferred
+        self.total_files = 0  # Total files to transfer (if known)
+        self.current_file = ""  # Current file being processed
+        self.last_update_time = None  # For speed calculation
+        self.last_bytes = 0  # For speed calculation
     
     def update(self, action: str = None, item: str = None, 
-               completed: int = None, total: int = None):
+               completed: int = None, total: int = None,
+               bytes_transferred: int = None, total_bytes: int = None,
+               files_transferred: int = None, total_files: int = None,
+               current_file: str = None):
         """Update status (thread-safe)."""
         with self.lock:
             if action:
@@ -59,6 +73,27 @@ class BackupStatus:
                 self.completed_items = completed
             if total is not None:
                 self.total_items = total
+            if bytes_transferred is not None:
+                self.bytes_transferred = bytes_transferred
+            if total_bytes is not None:
+                self.total_bytes = total_bytes
+            if files_transferred is not None:
+                self.files_transferred = files_transferred
+            if total_files is not None:
+                self.total_files = total_files
+            if current_file is not None:
+                self.current_file = current_file
+            
+            # Calculate transfer speed
+            current_time = time.time()
+            if self.last_update_time and self.bytes_transferred > self.last_bytes:
+                time_delta = current_time - self.last_update_time
+                bytes_delta = self.bytes_transferred - self.last_bytes
+                if time_delta > 0:
+                    # Calculate speed in MB/s
+                    self.transfer_speed = (bytes_delta / time_delta) / (1024 * 1024)
+            self.last_update_time = current_time
+            self.last_bytes = self.bytes_transferred
             
             # Calculate ETA
             if self.start_time and self.completed_items > 0 and self.total_items > 0:
@@ -69,6 +104,12 @@ class BackupStatus:
                     self.eta = timedelta(seconds=int(remaining / rate))
                 else:
                     self.eta = None
+            # Also calculate ETA based on transfer speed if we have bytes info
+            elif self.transfer_speed > 0 and self.total_bytes > 0 and self.bytes_transferred < self.total_bytes:
+                remaining_bytes = self.total_bytes - self.bytes_transferred
+                remaining_seconds = remaining_bytes / (self.transfer_speed * 1024 * 1024)
+                if remaining_seconds > 0:
+                    self.eta = timedelta(seconds=int(remaining_seconds))
     
     def start(self):
         """Start timing."""
@@ -111,56 +152,102 @@ class BackupTUI:
         )
         self.console.print(header)
     
-    def create_live_dashboard(self) -> Callable:
-        """Create live-updating dashboard (BTOP-like)."""
-        def generate_layout() -> Layout:
-            layout = Layout()
-            layout.split_column(
-                Layout(name="header", size=5),
-                Layout(name="main", ratio=2),
-                Layout(name="progress", size=8),
-                Layout(name="status", size=6),
-                Layout(name="footer", size=3),
-            )
-            
-            layout["main"].split_row(
-                Layout(name="containers", ratio=1),
-                Layout(name="volumes", ratio=1),
-            )
-            
-            # Header
-            elapsed = ""
-            if self.status.start_time:
-                elapsed_seconds = int(time.time() - self.status.start_time)
-                elapsed = f" | Elapsed: {timedelta(seconds=elapsed_seconds)}"
-            
-            eta_str = ""
-            if self.status.eta:
-                eta_str = f" | ETA: {self.status.eta}"
-            
-            status_color = {
-                "idle": "yellow",
-                "running": "green",
-                "paused": "yellow",
-                "cancelled": "red",
-                "completed": "green",
-                "error": "red",
-            }.get(self.status.status, "white")
-            
-            header_content = f"""
+    def create_live_dashboard(self) -> Layout:
+        """Create live-updating dashboard layout (BTOP-like)."""
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header", size=5),
+            Layout(name="main", ratio=2),
+            Layout(name="progress", size=8),
+            Layout(name="status", size=6),
+            Layout(name="footer", size=3),
+        )
+        
+        layout["main"].split_row(
+            Layout(name="containers", ratio=1),
+            Layout(name="volumes", ratio=1),
+        )
+        
+        # Header
+        elapsed = ""
+        if self.status.start_time:
+            elapsed_seconds = int(time.time() - self.status.start_time)
+            elapsed = f" | Elapsed: {timedelta(seconds=elapsed_seconds)}"
+        
+        eta_str = ""
+        if self.status.eta:
+            eta_str = f" | ETA: {self.status.eta}"
+        
+        status_color = {
+            "idle": "yellow",
+            "running": "green",
+            "paused": "yellow",
+            "cancelled": "red",
+            "completed": "green",
+            "error": "red",
+        }.get(self.status.status, "white")
+        
+        # Transfer speed display
+        speed_str = ""
+        if self.status.transfer_speed > 0:
+            if self.status.transfer_speed >= 1024:
+                speed_str = f" | Speed: {self.status.transfer_speed/1024:.2f} GB/s"
+            else:
+                speed_str = f" | Speed: {self.status.transfer_speed:.2f} MB/s"
+        
+        # Bytes transferred display
+        bytes_str = ""
+        if self.status.bytes_transferred > 0:
+            if self.status.bytes_transferred >= 1024**3:
+                bytes_str = f" | Transferred: {self.status.bytes_transferred/(1024**3):.2f} GB"
+            elif self.status.bytes_transferred >= 1024**2:
+                bytes_str = f" | Transferred: {self.status.bytes_transferred/(1024**2):.2f} MB"
+            else:
+                bytes_str = f" | Transferred: {self.status.bytes_transferred/1024:.2f} KB"
+        
+        # Files transferred display
+        files_str = ""
+        if self.status.files_transferred > 0:
+            if self.status.total_files > 0:
+                files_str = f" | Files: {self.status.files_transferred}/{self.status.total_files}"
+            else:
+                files_str = f" | Files: {self.status.files_transferred}"
+        
+        header_content = f"""
 [bold cyan]bbackup[/bold cyan] - Docker Backup Tool  [dim]v1.0.0[/dim]
-Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{eta_str}
+Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{eta_str}{speed_str}{bytes_str}{files_str}
 
 [bold]Current:[/bold] {self.status.current_action}
 [bold]Item:[/bold] {self.status.current_item if self.status.current_item else 'N/A'}
+{('[bold]File:[/bold] ' + self.status.current_file[:60]) if self.status.current_file else ''}
 """
-            layout["header"].update(Panel(header_content.strip(), border_style="cyan", box=box.ROUNDED))
-            
-            # Progress bar
+        layout["header"].update(Panel(header_content.strip(), border_style="cyan", box=box.ROUNDED))
+        
+        # Progress bar with enhanced metrics
+        # Use bytes-based progress if available, otherwise use item-based
+        if self.status.total_bytes > 0:
+            # Bytes-based progress (more accurate for file transfers)
             progress_bar = Progress(
                 SpinnerColumn(),
                 TextColumn("[progress.description]{task.description}"),
-                BarColumn(bar_width=50),
+                BarColumn(bar_width=40),
+                TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+                TextColumn("•"),
+                TextColumn("[cyan]{task.completed:>10}[/cyan]/[dim]{task.total:>10}[/dim]"),
+                TextColumn("[dim]bytes[/dim]"),
+                TextColumn("•"),
+                TimeElapsedColumn(),
+                TextColumn("•"),
+                TimeRemainingColumn(),
+            )
+            total = self.status.total_bytes
+            completed = self.status.bytes_transferred
+        else:
+            # Item-based progress (fallback)
+            progress_bar = Progress(
+                SpinnerColumn(),
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(bar_width=40),
                 TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                 TextColumn("•"),
                 MofNCompleteColumn(),
@@ -173,7 +260,7 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
                 progress_bar.columns = (
                     SpinnerColumn(),
                     TextColumn("[progress.description]{task.description}"),
-                    BarColumn(bar_width=50),
+                    BarColumn(bar_width=40),
                     TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
                     TextColumn("•"),
                     MofNCompleteColumn(),
@@ -182,93 +269,159 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
                     TextColumn("•"),
                     TimeRemainingColumn(),
                 )
-            
             total = self.status.total_items if self.status.total_items > 0 else None
-            task = progress_bar.add_task(
-                self.status.current_action[:60] if self.status.current_action else "Processing...",
-                total=total,
-                completed=self.status.completed_items,
+            completed = self.status.completed_items
+        
+        task = progress_bar.add_task(
+            self.status.current_action[:50] if self.status.current_action else "Processing...",
+            total=total,
+            completed=completed,
+        )
+        
+        layout["progress"].update(
+            Panel(progress_bar, title="Progress", border_style="blue", box=box.ROUNDED)
+        )
+        
+        # Encryption status
+        encryption_info = ""
+        if hasattr(self.status, 'encryption_status'):
+            if self.status.encryption_status == "encrypting":
+                encryption_info = "[yellow]🔒 Encrypting backup...[/yellow]"
+            elif self.status.encryption_status == "encrypted":
+                encryption_info = "[green]🔒 Backup encrypted[/green]"
+            elif self.status.encryption_status == "failed":
+                encryption_info = "[red]🔒 Encryption failed[/red]"
+        
+        # Containers panel with enhanced info
+        containers_table = Table(show_header=True, box=box.SIMPLE, show_edge=False)
+        containers_table.add_column("Container", style="cyan", width=22)
+        containers_table.add_column("Status", width=10)
+        containers_table.add_column("Progress", style="dim", width=12)
+        
+        for name, status_info in list(self.status.containers_status.items())[:10]:
+            # Handle both dict and string status
+            if isinstance(status_info, dict):
+                status = status_info.get("status", "unknown")
+                size = status_info.get("size", "-")
+                speed = status_info.get("speed", "")
+            else:
+                status = status_info
+                size = "-"
+                speed = ""
+            
+            status_color = "green" if status == "success" else "red" if status == "failed" else "yellow"
+            progress_display = size if size != "-" else speed if speed else status
+            containers_table.add_row(
+                name[:22],
+                f"[{status_color}]{status[:8]}[/{status_color}]",
+                progress_display[:12],
             )
+        
+        if len(self.status.containers_status) == 0:
+            containers_table.add_row("[dim]No containers backed up yet[/dim]", "", "")
+        
+        layout["containers"].update(
+            Panel(containers_table, title="Containers", border_style="green", box=box.ROUNDED)
+        )
+        
+        # Volumes panel with enhanced info
+        volumes_table = Table(show_header=True, box=box.SIMPLE, show_edge=False)
+        volumes_table.add_column("Volume", style="cyan", width=22)
+        volumes_table.add_column("Status", width=10)
+        volumes_table.add_column("Progress", style="dim", width=12)
+        
+        for name, status_info in list(self.status.volumes_status.items())[:10]:
+            # Handle both dict and string status
+            if isinstance(status_info, dict):
+                status = status_info.get("status", "unknown")
+                size = status_info.get("size", "-")
+                speed = status_info.get("speed", "")
+            else:
+                status = status_info
+                size = "-"
+                speed = ""
             
-            layout["progress"].update(
-                Panel(progress_bar, title="Progress", border_style="blue", box=box.ROUNDED)
+            status_color = "green" if status == "success" else "red" if status == "failed" else "yellow"
+            progress_display = size if size != "-" else speed if speed else status
+            volumes_table.add_row(
+                name[:22],
+                f"[{status_color}]{status[:8]}[/{status_color}]",
+                progress_display[:12],
             )
-            
-            # Containers panel
-            containers_table = Table(show_header=True, box=box.SIMPLE, show_edge=False)
-            containers_table.add_column("Container", style="cyan", width=25)
-            containers_table.add_column("Status", width=12)
-            containers_table.add_column("Size", style="dim", width=10)
-            
-            for name, status in list(self.status.containers_status.items())[:10]:
-                status_color = "green" if status == "success" else "red" if status == "failed" else "yellow"
-                containers_table.add_row(
-                    name[:25],
-                    f"[{status_color}]{status}[/{status_color}]",
-                    "-",
-                )
-            
-            if len(self.status.containers_status) == 0:
-                containers_table.add_row("[dim]No containers backed up yet[/dim]", "", "")
-            
-            layout["containers"].update(
-                Panel(containers_table, title="Containers", border_style="green", box=box.ROUNDED)
-            )
-            
-            # Volumes panel
-            volumes_table = Table(show_header=True, box=box.SIMPLE, show_edge=False)
-            volumes_table.add_column("Volume", style="cyan", width=25)
-            volumes_table.add_column("Status", width=12)
-            volumes_table.add_column("Size", style="dim", width=10)
-            
-            for name, status in list(self.status.volumes_status.items())[:10]:
-                status_color = "green" if status == "success" else "red" if status == "failed" else "yellow"
-                volumes_table.add_row(
-                    name[:25],
-                    f"[{status_color}]{status}[/{status_color}]",
-                    "-",
-                )
-            
-            if len(self.status.volumes_status) == 0:
-                volumes_table.add_row("[dim]No volumes backed up yet[/dim]", "", "")
-            
-            layout["volumes"].update(
-                Panel(volumes_table, title="Volumes", border_style="yellow", box=box.ROUNDED)
-            )
-            
-            # Status panel
-            status_lines = []
-            if self.status.errors:
-                status_lines.append(f"[red]Errors: {len(self.status.errors)}[/red]")
-                for error in self.status.errors[-3:]:  # Show last 3 errors
-                    status_lines.append(f"  [red]•[/red] {error[:60]}")
-            if self.status.warnings:
-                status_lines.append(f"[yellow]Warnings: {len(self.status.warnings)}[/yellow]")
-                for warning in self.status.warnings[-2:]:  # Show last 2 warnings
-                    status_lines.append(f"  [yellow]•[/yellow] {warning[:60]}")
-            if not status_lines:
-                status_lines.append("[green]No errors or warnings[/green]")
-            
-            layout["status"].update(
-                Panel("\n".join(status_lines), title="Status", border_style="magenta", box=box.ROUNDED)
-            )
-            
-            # Footer with controls
-            footer_content = """
+        
+        if len(self.status.volumes_status) == 0:
+            volumes_table.add_row("[dim]No volumes backed up yet[/dim]", "", "")
+        
+        layout["volumes"].update(
+            Panel(volumes_table, title="Volumes", border_style="yellow", box=box.ROUNDED)
+        )
+        
+        # Status panel with encryption info and metrics
+        status_lines = []
+        
+        # Show transfer metrics if available
+        if self.status.transfer_speed > 0:
+            if self.status.transfer_speed >= 1024:
+                speed_display = f"{self.status.transfer_speed/1024:.2f} GB/s"
+            else:
+                speed_display = f"{self.status.transfer_speed:.2f} MB/s"
+            status_lines.append(f"[cyan]⚡ Transfer Speed:[/cyan] {speed_display}")
+        
+        if self.status.bytes_transferred > 0:
+            if self.status.bytes_transferred >= 1024**3:
+                bytes_display = f"{self.status.bytes_transferred/(1024**3):.2f} GB"
+            elif self.status.bytes_transferred >= 1024**2:
+                bytes_display = f"{self.status.bytes_transferred/(1024**2):.2f} MB"
+            else:
+                bytes_display = f"{self.status.bytes_transferred/1024:.2f} KB"
+            status_lines.append(f"[cyan]📦 Data Transferred:[/cyan] {bytes_display}")
+        
+        if self.status.files_transferred > 0:
+            if self.status.total_files > 0:
+                status_lines.append(f"[cyan]📄 Files:[/cyan] {self.status.files_transferred}/{self.status.total_files}")
+            else:
+                status_lines.append(f"[cyan]📄 Files:[/cyan] {self.status.files_transferred}")
+        
+        if hasattr(self.status, 'encryption_status'):
+            if self.status.encryption_status == "encrypting":
+                status_lines.append("[yellow]🔒 Encrypting backup...[/yellow]")
+            elif self.status.encryption_status == "encrypted":
+                status_lines.append("[green]🔒 Backup encrypted[/green]")
+            elif self.status.encryption_status == "failed":
+                status_lines.append("[red]🔒 Encryption failed[/red]")
+        
+        if self.status.errors:
+            status_lines.append(f"[red]Errors: {len(self.status.errors)}[/red]")
+            for error in self.status.errors[-2:]:  # Show last 2 errors
+                status_lines.append(f"  [red]•[/red] {error[:55]}")
+        if self.status.warnings:
+            status_lines.append(f"[yellow]Warnings: {len(self.status.warnings)}[/yellow]")
+            for warning in self.status.warnings[-2:]:  # Show last 2 warnings
+                status_lines.append(f"  [yellow]•[/yellow] {warning[:55]}")
+        if not status_lines:
+            status_lines.append("[green]No errors or warnings[/green]")
+        
+        layout["status"].update(
+            Panel("\n".join(status_lines), title="Status", border_style="magenta", box=box.ROUNDED)
+        )
+        
+        # Footer with controls
+        footer_content = """
 [dim]Controls:[/dim] [bold]Q[/bold] = Quit/Cancel  [bold]P[/bold] = Pause  [bold]S[/bold] = Skip Current  [bold]H[/bold] = Help
 """
-            layout["footer"].update(
-                Panel(footer_content.strip(), border_style="dim", box=box.SIMPLE)
-            )
-            
-            return layout
+        layout["footer"].update(
+            Panel(footer_content.strip(), border_style="dim", box=box.SIMPLE)
+        )
         
-        return generate_layout
+        return layout
     
     def run_with_live_dashboard(self, operation: Callable, *args, **kwargs):
         """Run operation with live dashboard."""
         import sys
         import select
+        
+        # Check if we have a TTY for screen mode
+        use_screen = sys.stdout.isatty() and sys.stdin.isatty()
         
         # Run operation in background
         operation_thread = threading.Thread(target=operation, args=args, kwargs=kwargs, daemon=True)
@@ -276,7 +429,9 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
         
         # Update dashboard with keyboard handling
         try:
-            with Live(self.create_live_dashboard(), refresh_per_second=4, screen=True) as live:
+            # Start with initial dashboard
+            # Use screen=True only if we have a TTY, otherwise use regular Live updates
+            with Live(self.create_live_dashboard(), refresh_per_second=4, screen=use_screen) as live:
                 while operation_thread.is_alive() and self.status.status not in ["cancelled", "completed", "error"]:
                     # Check for keyboard input (non-blocking)
                     if sys.stdin.isatty():
@@ -308,6 +463,7 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
                                 # Fallback if termios not available (Windows, etc.)
                                 pass
                     
+                    # Update dashboard with latest status
                     live.update(self.create_live_dashboard())
                     time.sleep(0.25)
                 

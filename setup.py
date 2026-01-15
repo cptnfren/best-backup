@@ -23,7 +23,14 @@ setup(
         "docker>=7.0.0",
         "click>=8.1.7",
         "paramiko>=3.4.0",
+        "cryptography>=41.0.0",
+        "requests>=2.31.0",
     ],
+    extras_require={
+        "management": [
+            "gitpython>=3.1.0",  # Optional, for Git-based updates
+        ],
+    },
     python_requires=">=3.8",
     entry_points={
         "console_scripts": [

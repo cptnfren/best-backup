@@ -11,6 +11,7 @@ from .remote import RemoteStorageManager
 from .rotation import BackupRotation
 from .tui import BackupStatus
 from .logging import get_logger
+from .encryption import EncryptionManager
 
 logger = get_logger('backup_runner')
 
@@ -154,7 +155,69 @@ class BackupRunner:
                 )
                 
                 logger.info(f"Backing up volume: {volume_name} (incremental={incremental})")
-                success = self.docker_backup.backup_volume(volume_name, backup_dir, incremental)
+                
+                # Create progress callback to parse rsync output
+                def parse_rsync_progress(line: str):
+                    """Parse rsync progress output and update status."""
+                    import re
+                    # Parse rsync progress2 format: "    123,456,789  50%  123.45MB/s    0:00:05  filename"
+                    # Or: "    123,456,789  50%  123.45MB/s    0:00:05"
+                    progress_match = re.search(r'(\d+(?:,\d+)*)\s+(\d+)%\s+([\d.]+)([KMGT]?B/s)', line)
+                    if progress_match:
+                        bytes_str = progress_match.group(1).replace(',', '')
+                        percentage = int(progress_match.group(2))
+                        speed_str = progress_match.group(3)
+                        speed_unit = progress_match.group(4)
+                        
+                        try:
+                            bytes_transferred = int(bytes_str)
+                            speed = float(speed_str)
+                            
+                            # Convert speed to MB/s
+                            speed_multiplier = {'B/s': 1/(1024*1024), 'KB/s': 1/1024, 'MB/s': 1, 'GB/s': 1024, 'TB/s': 1024*1024}
+                            speed_mb = speed * speed_multiplier.get(speed_unit, 1)
+                            
+                            # Estimate total bytes from percentage
+                            if percentage > 0:
+                                total_bytes = int(bytes_transferred * 100 / percentage)
+                            else:
+                                total_bytes = 0
+                            
+                            self.status.update(
+                                bytes_transferred=bytes_transferred,
+                                total_bytes=total_bytes if total_bytes > 0 else None,
+                                transfer_speed=speed_mb
+                            )
+                        except (ValueError, ZeroDivisionError):
+                            pass
+                    
+                    # Parse file count: "Number of files: 1,234 (reg: 1,200, dir: 34)"
+                    files_match = re.search(r'Number of files:\s*(\d+(?:,\d+)*)', line)
+                    if files_match:
+                        try:
+                            files_count = int(files_match.group(1).replace(',', ''))
+                            self.status.update(total_files=files_count)
+                        except ValueError:
+                            pass
+                    
+                    # Parse current file being transferred
+                    # Look for filename at end of line (rsync progress2 format)
+                    file_match = re.search(r'([^/\s]+\.\w+)\s*$', line.strip())
+                    if file_match and not progress_match:
+                        self.status.update(current_file=file_match.group(1))
+                    
+                    # Also track files transferred count
+                    if "sent" in line.lower() and "received" in line.lower():
+                        # This indicates a file transfer completed
+                        if not hasattr(self.status, '_files_counted'):
+                            self.status._files_counted = 0
+                        self.status._files_counted += 1
+                        self.status.update(files_transferred=self.status._files_counted)
+                
+                success = self.docker_backup.backup_volume(
+                    volume_name, backup_dir, incremental, 
+                    progress_callback=parse_rsync_progress
+                )
                 results["volumes"][volume_name] = "success" if success else "failed"
                 self.status.volumes_status[volume_name] = "success" if success else "failed"
                 if not success:
@@ -215,6 +278,43 @@ class BackupRunner:
             self.status.status = "completed"
         
         return results
+    
+    def encrypt_backup_directory(self, backup_dir: Path) -> Path:
+        """
+        Encrypt backup directory if encryption is enabled.
+        
+        Args:
+            backup_dir: Backup directory to encrypt
+        
+        Returns:
+            Path to encrypted backup directory (or original if encryption disabled/failed)
+        """
+        if not self.config.encryption.enabled:
+            return backup_dir
+        
+        try:
+            logger.info("Encrypting backup directory...")
+            self.status.update(action="Encrypting backup...", item="")
+            self.status.encryption_status = "encrypting"
+            
+            encryption_mgr = EncryptionManager(self.config.encryption)
+            encrypted_dir = encryption_mgr.encrypt_backup(backup_dir)
+            
+            if encrypted_dir != backup_dir:
+                logger.info(f"Backup encrypted: {encrypted_dir}")
+                self.status.update(action="Backup encrypted successfully", item="")
+                self.status.encryption_status = "encrypted"
+                return encrypted_dir
+            else:
+                logger.warning("Encryption failed, using unencrypted backup")
+                self.status.add_warning("Encryption failed, backup is unencrypted")
+                self.status.encryption_status = "failed"
+                return backup_dir
+        except Exception as e:
+            logger.error(f"Encryption error: {e}")
+            self.status.add_error(f"Encryption failed: {e}")
+            self.status.encryption_status = "failed"
+            return backup_dir  # Return original on error
     
     def upload_to_remotes(
         self,

@@ -34,16 +34,24 @@ best-backup/
 ├── docs/                      # Development documentation
 │   ├── README.md             # Documentation index
 │   ├── TUI_IMPROVEMENTS.md   # TUI development notes
+│   ├── ENCRYPTION_GUIDE.md   # Encryption usage guide
+│   ├── GITHUB_KEY_EXAMPLES.md # GitHub key deployment examples
+│   ├── PROJECT_STRUCTURE.md  # This file
+│   ├── REORGANIZATION_SUMMARY.md # Reorganization history
 │   ├── reports/              # Deficiency and analysis reports
 │   │   ├── DEFICIENCY_REPORT.md
 │   │   ├── FEATURE_STATUS_REPORT.md
 │   │   ├── CODE_ANALYSIS_REPORT.md
 │   │   ├── QUICK_DEFICIENCY_SUMMARY.md
 │   │   ├── IMPLEMENTATION_ROADMAP.md
+│   │   ├── IMPLEMENTATION_COMPLETE.md
 │   │   └── REPORTS_INDEX.md
 │   └── tests/                # Test results and reports
 │       ├── TEST_RESULTS.md
-│       └── TEST_RESULTS_COMPREHENSIVE.md
+│       ├── TEST_RESULTS_COMPREHENSIVE.md
+│       ├── SANDBOX_BACKUP_TEST_LOG.md
+│       ├── ENCRYPTION_TEST_LOG.md
+│       └── ENCRYPTION_SETUP_SUMMARY.md
 │
 ├── scripts/                   # Utility scripts
 │   ├── README.md             # Scripts documentation
@@ -58,8 +66,8 @@ best-backup/
 │
 ├── README.md                 # Main user documentation
 ├── QUICKSTART.md            # Quick start guide
-├── PROJECT_SUMMARY.md       # Architecture and design overview
-└── PROJECT_STRUCTURE.md     # This file
+├── QUICK_INSTALL.md         # Installation guide
+└── PROJECT_SUMMARY.md       # Architecture and design overview
 ```
 
 ## Directory Purposes
@@ -85,9 +93,12 @@ Main Python package containing all source code. Each module has a specific respo
 
 ### `docs/`
 Development and technical documentation:
-- **reports/:** Deficiency analysis, feature status, code analysis
-- **tests/:** Test results and verification reports
+- **reports/:** Deficiency analysis, feature status, code analysis, implementation reports
+- **tests/:** Test results, verification reports, encryption testing logs
 - **TUI_IMPROVEMENTS.md:** TUI development notes
+- **ENCRYPTION_GUIDE.md:** Encryption usage and configuration guide
+- **GITHUB_KEY_EXAMPLES.md:** GitHub key deployment examples
+- **PROJECT_STRUCTURE.md:** Repository structure documentation (this file)
 
 ### `scripts/`
 Utility scripts for testing and development:
@@ -103,8 +114,8 @@ Utility scripts for testing and development:
 - Descriptive module names (verb_noun.py pattern)
 
 ### Documentation
-- **User docs:** Root directory (README.md, QUICKSTART.md)
-- **Development docs:** `docs/` directory
+- **User docs:** Root directory (README.md, QUICKSTART.md, QUICK_INSTALL.md, PROJECT_SUMMARY.md)
+- **Development docs:** `docs/` directory (TUI_IMPROVEMENTS.md, ENCRYPTION_GUIDE.md, etc.)
 - **Reports:** `docs/reports/` subdirectory
 - **Test results:** `docs/tests/` subdirectory
 

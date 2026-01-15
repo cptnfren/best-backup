@@ -20,6 +20,7 @@ from .rotation import BackupRotation
 from .backup_runner import BackupRunner
 from .restore import DockerRestore
 from .logging import setup_logging
+from .encryption import EncryptionManager
 
 
 @click.group()
@@ -189,6 +190,7 @@ def backup(
     
     # Define backup operation
     def backup_operation():
+        nonlocal backup_dir, backup_name  # Allow modification of outer scope variables
         try:
             status.status = "running"
             results = runner.run_backup(
@@ -197,6 +199,16 @@ def backup(
                 scope=scope,
                 incremental=incremental or config.incremental.enabled,
             )
+            
+            # Encrypt backup if enabled
+            if config.encryption.enabled and status.status != "cancelled":
+                original_backup_dir = backup_dir
+                encrypted_backup_dir = runner.encrypt_backup_directory(backup_dir)
+                # Use encrypted directory for upload if encryption succeeded
+                if encrypted_backup_dir != original_backup_dir:
+                    backup_dir = encrypted_backup_dir
+                    # Update backup_name if directory name changed
+                    backup_name = encrypted_backup_dir.name
             
             # Upload to remotes
             if remotes_to_use and status.status != "cancelled":
@@ -538,6 +550,142 @@ def list_remote_backups(ctx, remote):
         )
     
     console.print(table)
+
+
+@cli.command()
+@click.option(
+    '--method',
+    type=click.Choice(['symmetric', 'asymmetric', 'both']),
+    default='symmetric',
+    help='Encryption method to use'
+)
+@click.option(
+    '--key-path',
+    type=click.Path(),
+    help='Directory to save key(s) (default: ~/.config/bbackup/)'
+)
+@click.option(
+    '--password',
+    help='Password for key encryption (optional)'
+)
+@click.option(
+    '--algorithm',
+    type=click.Choice(['rsa-4096', 'ecdsa-p384']),
+    default='rsa-4096',
+    help='Algorithm for asymmetric keys (default: rsa-4096)'
+)
+@click.option(
+    '--upload-github',
+    is_flag=True,
+    help='Upload public key to GitHub and display URL (requires GitHub CLI or manual upload)'
+)
+@click.pass_context
+def init_encryption(ctx, method, key_path, password, algorithm, upload_github):
+    """Initialize encryption keys for backup system."""
+    config: Config = ctx.obj["config"]
+    console: Console = ctx.obj["console"]
+    
+    # Determine key directory
+    if key_path:
+        key_dir = Path(key_path).expanduser()
+    else:
+        key_dir = Path.home() / '.config' / 'bbackup'
+    
+    key_dir.mkdir(parents=True, exist_ok=True)
+    
+    console.print(f"\n[bold cyan]Initializing encryption keys...[/bold cyan]\n")
+    
+    try:
+        if method in ['symmetric', 'both']:
+            console.print("[yellow]Generating symmetric key...[/yellow]")
+            symmetric_key = EncryptionManager.generate_symmetric_key()
+            key_file = key_dir / "encryption.key"
+            key_file.write_bytes(symmetric_key)
+            key_file.chmod(0o600)  # Secure permissions
+            console.print(f"[green]✓[/green] Symmetric key saved to: {key_file}")
+            console.print(f"   Key size: {len(symmetric_key)} bytes")
+        
+        if method in ['asymmetric', 'both']:
+            console.print(f"[yellow]Generating asymmetric keypair ({algorithm})...[/yellow]")
+            public_pem, private_pem = EncryptionManager.generate_keypair(algorithm)
+            
+            public_key_file = key_dir / "backup_public.pem"
+            private_key_file = key_dir / "backup_private.pem"
+            
+            public_key_file.write_bytes(public_pem)
+            private_key_file.write_bytes(private_pem)
+            
+            # Set secure permissions
+            public_key_file.chmod(0o644)
+            private_key_file.chmod(0o600)
+            
+            console.print(f"[green]✓[/green] Public key saved to: {public_key_file}")
+            console.print(f"[green]✓[/green] Private key saved to: {private_key_file}")
+            console.print(f"   [red]WARNING:[/red] Keep private key secure! Never share or upload it.")
+        
+        console.print(f"\n[bold green]Keys generated successfully![/bold green]\n")
+        
+        # Display configuration instructions
+        console.print("[bold]Next steps:[/bold]\n")
+        
+        if method in ['symmetric', 'both']:
+            console.print("[cyan]Symmetric Key Configuration:[/cyan]")
+            console.print(f"  Add to config.yaml:")
+            console.print(f"  ```yaml")
+            console.print(f"  encryption:")
+            console.print(f"    enabled: true")
+            console.print(f"    method: symmetric")
+            console.print(f"    symmetric:")
+            console.print(f"      key_file: {key_file}")
+            console.print(f"  ```\n")
+            
+            console.print("  [yellow]For multi-server deployment:[/yellow]")
+            console.print("  1. Upload key to secure location (GitHub gist, private repo)")
+            console.print("  2. Use key_url instead of key_file:")
+            console.print(f"     key_url: https://raw.githubusercontent.com/user/repo/encryption.key")
+            console.print("  3. Configure same URL on all servers\n")
+        
+        if method in ['asymmetric', 'both']:
+            console.print("[cyan]Asymmetric Key Configuration:[/cyan]")
+            console.print(f"  Add to config.yaml:")
+            console.print(f"  ```yaml")
+            console.print(f"  encryption:")
+            console.print(f"    enabled: true")
+            console.print(f"    method: asymmetric")
+            console.print(f"    asymmetric:")
+            console.print(f"      public_key: {public_key_file}")
+            console.print(f"      private_key: {private_key_file}")
+            console.print(f"      algorithm: {algorithm}")
+            console.print(f"  ```\n")
+            
+            console.print("  [yellow]For multi-server deployment:[/yellow]")
+            console.print("  1. Upload public key to GitHub:")
+            if upload_github:
+                console.print("     [dim](Manual upload required - GitHub CLI not integrated)[/dim]")
+            console.print(f"     - Create gist named 'bbackup-keys' or 'backup-keys'")
+            console.print(f"     - OR create repo named 'bbackup-keys' or 'backup-keys'")
+            console.print(f"     - Upload backup_public.pem file")
+            console.print("  2. Configure public key using GitHub shortcut (easiest):")
+            console.print(f"     public_key: github:YOUR_USERNAME")
+            console.print("     OR use explicit URL:")
+            console.print(f"     public_key: https://raw.githubusercontent.com/user/repo/backup_public.pem")
+            console.print("  3. Keep private key secure on restore servers only (local file)")
+            console.print("  4. Configure private key path on restore servers:")
+            console.print(f"     private_key: {private_key_file}\n")
+            console.print("  [bold cyan]GitHub Shortcut Examples:[/bold cyan]")
+            console.print("     github:username              # Auto-finds key in standard locations")
+            console.print("     github:username/gist:abc123  # Explicit gist ID")
+            console.print("     github:username/repo:backup-keys  # Explicit repo name")
+        
+        console.print("[bold]Security Notes:[/bold]")
+        console.print("  - Private keys should NEVER be uploaded or shared")
+        console.print("  - Use HTTPS URLs only for public keys")
+        console.print("  - Set proper file permissions (600 for private keys)")
+        console.print("  - Consider password-protecting key files\n")
+        
+    except Exception as e:
+        console.print(f"[red]Error generating keys: {e}[/red]")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
