@@ -358,10 +358,17 @@ This tool is designed to be extracted into its own GitHub repository. Contributi
 
 ## Roadmap
 
-- [ ] Restore functionality
+- [x] Restore functionality (✅ Implemented - see `docs/tests/TEST_RESULTS_COMPREHENSIVE.md`)
 - [ ] Backup verification/checksums
 - [ ] Email notifications
 - [ ] Webhook support
 - [ ] Backup scheduling (cron integration)
 - [ ] Backup encryption
 - [ ] Multi-server backup coordination
+
+## Development Documentation
+
+For development and technical documentation, see:
+- **Development Reports:** `docs/reports/` - Deficiency reports, feature status, code analysis
+- **Test Results:** `docs/tests/` - Test results and verification reports
+- **Architecture:** `PROJECT_SUMMARY.md` - Design decisions and architecture

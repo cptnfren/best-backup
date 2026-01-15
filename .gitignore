@@ -24,6 +24,7 @@ wheels/
 venv/
 env/
 ENV/
+.venv
 
 # IDE
 .vscode/
@@ -32,14 +33,29 @@ ENV/
 *.swo
 *~
 
-# Config (user-specific)
-config.yaml
-*.log
+# Cursor
+.cursor/
 
-# Backup staging
-/tmp/bbackup_staging/
-backup_*/
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# Logs
+*.log
+logs/
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Project specific
+*.backup
+backup_*/
+/tmp/
+*.tmp
+
+# Config (user-specific, not tracked)
+~/.config/bbackup/config.yaml
+~/.bbackup/config.yaml
