@@ -1,0 +1,239 @@
+"""
+Remote storage integration.
+Handles rclone (Google Drive) and SFTP remote backups.
+"""
+
+import os
+import subprocess
+import shutil
+from pathlib import Path
+from typing import Optional, List
+from rich.console import Console
+
+from .config import RemoteStorage, Config
+
+
+class RemoteStorageManager:
+    """Manage remote storage operations."""
+    
+    def __init__(self, config: Config):
+        self.config = config
+        self.console = Console()
+    
+    def upload_to_rclone(
+        self,
+        remote: RemoteStorage,
+        local_path: Path,
+        remote_path: str,
+        progress_callback=None,
+    ) -> bool:
+        """Upload to remote via rclone."""
+        if not remote.remote_name:
+            self.console.print(f"[red]Error: rclone remote name not configured for {remote.name}[/red]")
+            return False
+        
+        # Check if rclone is installed
+        if not shutil.which("rclone"):
+            self.console.print("[red]Error: rclone not found. Please install rclone first.[/red]")
+            return False
+        
+        # Build rclone command
+        rclone_path = f"{remote.remote_name}:{remote_path}"
+        
+        cmd = [
+            "rclone",
+            "copy",
+            str(local_path),
+            rclone_path,
+            "--progress",
+            "--stats=1s",
+        ]
+        
+        if progress_callback:
+            # Use rclone's JSON output for progress tracking
+            cmd.append("--stats-log-level=NOTICE")
+        
+        try:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            
+            if progress_callback:
+                for line in process.stdout:
+                    if progress_callback:
+                        progress_callback(line)
+            
+            process.wait()
+            return process.returncode == 0
+        except Exception as e:
+            self.console.print(f"[red]Error uploading to rclone: {e}[/red]")
+            return False
+    
+    def upload_to_sftp(
+        self,
+        remote: RemoteStorage,
+        local_path: Path,
+        remote_path: str,
+    ) -> bool:
+        """Upload to remote via SFTP."""
+        try:
+            import paramiko
+        except ImportError:
+            self.console.print("[red]Error: paramiko not installed. Install with: pip install paramiko[/red]")
+            return False
+        
+        try:
+            # Setup SSH client
+            ssh = paramiko.SSHClient()
+            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+            
+            # Load key file
+            key_path = os.path.expanduser(remote.key_file) if remote.key_file else None
+            if key_path and os.path.exists(key_path):
+                key = paramiko.RSAKey.from_private_key_file(key_path)
+            else:
+                key = None
+            
+            # Connect
+            ssh.connect(
+                hostname=remote.host,
+                port=remote.port,
+                username=remote.user,
+                pkey=key,
+                timeout=30,
+            )
+            
+            # Setup SFTP
+            sftp = ssh.open_sftp()
+            
+            # Create remote directory if needed
+            try:
+                sftp.mkdir(remote_path)
+            except IOError:
+                pass  # Directory might already exist
+            
+            # Upload files
+            if local_path.is_file():
+                sftp.put(str(local_path), f"{remote_path}/{local_path.name}")
+            elif local_path.is_dir():
+                self._upload_directory_sftp(sftp, local_path, remote_path)
+            
+            sftp.close()
+            ssh.close()
+            return True
+        except Exception as e:
+            self.console.print(f"[red]Error uploading to SFTP: {e}[/red]")
+            return False
+    
+    def _upload_directory_sftp(self, sftp, local_dir: Path, remote_dir: str):
+        """Recursively upload directory via SFTP."""
+        for item in local_dir.iterdir():
+            remote_path = f"{remote_dir}/{item.name}"
+            if item.is_file():
+                sftp.put(str(item), remote_path)
+            elif item.is_dir():
+                try:
+                    sftp.mkdir(remote_path)
+                except IOError:
+                    pass
+                self._upload_directory_sftp(sftp, item, remote_path)
+    
+    def upload_to_local(
+        self,
+        remote: RemoteStorage,
+        local_path: Path,
+        remote_path: str,
+    ) -> bool:
+        """Copy to local directory (for testing)."""
+        try:
+            dest = Path(os.path.expanduser(remote_path))
+            dest.mkdir(parents=True, exist_ok=True)
+            
+            if local_path.is_file():
+                shutil.copy2(local_path, dest / local_path.name)
+            elif local_path.is_dir():
+                dest_dir = dest / local_path.name
+                # Use copytree with ignore for socket files and other special files
+                def ignore_special_files(src, names):
+                    ignored = []
+                    for name in names:
+                        src_path = Path(src) / name
+                        # Skip socket files, broken symlinks, and other special files
+                        if src_path.is_socket() or (src_path.is_symlink() and not src_path.exists()):
+                            ignored.append(name)
+                    return ignored
+                
+                if dest_dir.exists():
+                    shutil.rmtree(dest_dir)
+                shutil.copytree(local_path, dest_dir, ignore=ignore_special_files, dirs_exist_ok=True)
+            
+            return True
+        except Exception as e:
+            self.console.print(f"[red]Error copying to local: {e}[/red]")
+            return False
+    
+    def upload_backup(
+        self,
+        remote: RemoteStorage,
+        backup_path: Path,
+        backup_name: str,
+        progress_callback=None,
+    ) -> bool:
+        """Upload backup to remote storage."""
+        remote_path = os.path.join(remote.path, backup_name).replace("\\", "/")
+        
+        if remote.type == "rclone":
+            return self.upload_to_rclone(remote, backup_path, remote_path, progress_callback)
+        elif remote.type == "sftp":
+            return self.upload_to_sftp(remote, backup_path, remote_path)
+        elif remote.type == "local":
+            return self.upload_to_local(remote, backup_path, remote_path)
+        else:
+            self.console.print(f"[red]Unknown remote type: {remote.type}[/red]")
+            return False
+    
+    def list_backups(self, remote: RemoteStorage) -> List[str]:
+        """List available backups on remote."""
+        if remote.type == "rclone":
+            return self._list_rclone_backups(remote)
+        elif remote.type == "local":
+            return self._list_local_backups(remote)
+        else:
+            return []
+    
+    def _list_rclone_backups(self, remote: RemoteStorage) -> List[str]:
+        """List backups on rclone remote."""
+        if not remote.remote_name:
+            return []
+        
+        try:
+            cmd = ["rclone", "ls", f"{remote.remote_name}:{remote.path}"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+            if result.returncode == 0:
+                # Parse output to get backup names
+                backups = []
+                for line in result.stdout.splitlines():
+                    if line.strip():
+                        parts = line.split()
+                        if len(parts) >= 2:
+                            backups.append(parts[-1])
+                return backups
+        except Exception:
+            pass
+        
+        return []
+    
+    def _list_local_backups(self, remote: RemoteStorage) -> List[str]:
+        """List backups in local directory."""
+        try:
+            backup_dir = Path(os.path.expanduser(remote.path))
+            if backup_dir.exists():
+                return [d.name for d in backup_dir.iterdir() if d.is_dir()]
+        except Exception:
+            pass
+        
+        return []

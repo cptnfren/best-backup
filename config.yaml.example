@@ -1,0 +1,119 @@
+# bbackup Configuration File
+# Copy this to ~/.config/bbackup/config.yaml or /etc/bbackup/config.yaml
+
+# Backup Settings
+backup:
+  # Default backup directory (local staging area)
+  local_staging: /tmp/bbackup_staging
+  
+  # Compression settings
+  compression:
+    enabled: true
+    level: 6  # 1-9, higher = more compression but slower
+    format: gzip  # gzip, bzip2, xz
+  
+  # What to backup by default
+  default_scope:
+    containers: true
+    volumes: true
+    networks: true
+    configs: true
+  
+  # Backup sets - predefined groups of containers
+  backup_sets:
+    production:
+      description: "Production containers"
+      containers:
+        - dms
+        - minio
+        - npm
+        - portainer
+      scope:
+        volumes: true
+        configs: true
+        networks: true
+    
+    media:
+      description: "Media stack containers"
+      containers:
+        - arr_plex
+        - arr_sonarr
+        - arr_radarr
+        - arr_sabnzbd
+      scope:
+        volumes: true
+        configs: true
+    
+    config_only:
+      description: "Configuration only (no data volumes)"
+      containers:
+        - npm
+        - portainer
+      scope:
+        volumes: false
+        configs: true
+        networks: true
+
+# Remote Storage Destinations
+remotes:
+  # Google Drive via rclone
+  gdrive:
+    enabled: false
+    type: rclone
+    remote_name: gdrive  # rclone remote name (must be configured separately)
+    path: /backups/docker
+    compression: true
+  
+  # SSH/SFTP Remote
+  ssh_server:
+    enabled: false
+    type: sftp
+    host: backup.example.com
+    port: 22
+    user: backup
+    key_file: ~/.ssh/backup_key
+    path: /backups/docker
+    compression: true
+  
+  # Local directory (for testing)
+  local:
+    enabled: true
+    type: local
+    path: ~/backups/docker
+    compression: true
+
+# Backup Rotation & Retention
+retention:
+  # Time-based retention
+  daily: 7      # Keep 7 daily backups
+  weekly: 4     # Keep 4 weekly backups
+  monthly: 12   # Keep 12 monthly backups
+  
+  # Storage quota limits (in GB, 0 = disabled)
+  max_storage_gb: 0
+  warning_threshold_percent: 80  # Warn when storage exceeds this %
+  cleanup_threshold_percent: 90  # Start cleanup when storage exceeds this %
+  
+  # Cleanup strategy when quota exceeded
+  cleanup_strategy: oldest_first  # oldest_first, least_important_first
+
+# Differential/Incremental Backup Settings
+incremental:
+  enabled: true
+  # Use rsync --link-dest for incremental backups
+  use_link_dest: true
+  # Minimum file size (bytes) to use incremental for
+  min_file_size: 1048576  # 1MB
+
+# Logging
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file: ~/.local/share/bbackup/bbackup.log
+  max_size_mb: 10
+  backup_count: 5
+
+# Docker Settings
+docker:
+  socket: /var/run/docker.sock
+  # Timeout for docker commands (seconds)
+  timeout: 300
