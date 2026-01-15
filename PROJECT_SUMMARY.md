@@ -22,14 +22,20 @@
 ### Key Features Implemented
 ✅ Rich TUI interface with progress bars and status displays  
 ✅ Docker container, volume, and network backup  
-✅ Incremental/differential backups  
+✅ Incremental/differential backups with --link-dest  
 ✅ Multiple remote storage destinations (rclone, SFTP, local)  
-✅ Backup rotation with time-based retention  
-✅ Storage quota management  
+✅ Backup rotation with time-based retention (fully integrated)  
+✅ Storage quota management with automatic cleanup  
 ✅ YAML configuration with CLI overrides  
 ✅ Interactive container selection  
 ✅ Backup sets (predefined container groups)  
 ✅ Selective backup (config-only, volumes-only, etc.)  
+✅ Logging system with file rotation  
+✅ Volume compression support  
+✅ Upload progress tracking  
+✅ Skip functionality (S key)  
+✅ Help screen (H key)  
+✅ List remote backups command  
 
 ## Project Structure
 

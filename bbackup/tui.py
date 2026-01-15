@@ -45,6 +45,7 @@ class BackupStatus:
         self.volumes_status = {}
         self.networks_status = {}
         self.remote_status = {}
+        self.skip_current = False  # Flag to skip current item
     
     def update(self, action: str = None, item: str = None, 
                completed: int = None, total: int = None):
@@ -297,6 +298,12 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
                                         self.status.status = "paused"
                                     elif self.status.status == "paused":
                                         self.status.status = "running"
+                                elif key.lower() == 's':
+                                    # Skip current item
+                                    self.status.skip_current = True
+                                elif key.lower() == 'h':
+                                    # Show help screen
+                                    self._show_help_screen()
                             except (ImportError, OSError, AttributeError):
                                 # Fallback if termios not available (Windows, etc.)
                                 pass
@@ -404,6 +411,30 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
         }
         
         return scope
+    
+    def _show_help_screen(self):
+        """Display help screen with keyboard shortcuts."""
+        help_content = """
+[bold cyan]bbackup - Keyboard Controls[/bold cyan]
+
+[bold]Q[/bold] - Quit/Cancel backup
+  Cancels the current backup operation and exits
+
+[bold]P[/bold] - Pause/Resume backup
+  Pauses or resumes the backup operation
+
+[bold]S[/bold] - Skip current item
+  Skips the current container/volume/network being backed up
+
+[bold]H[/bold] - Help (this screen)
+  Shows this help screen
+
+[dim]Press any key to close help...[/dim]
+"""
+        from rich.panel import Panel
+        self.console.print(Panel(help_content.strip(), title="Help", border_style="cyan", box=box.ROUNDED))
+        # In the live dashboard, this would be shown in a modal/overlay
+        # For now, it's printed to console
     
     def show_backup_status(self, results: Dict, errors: List[str]):
         """Display backup results."""

@@ -9,10 +9,12 @@ A comprehensive, feature-rich Docker backup solution with a beautiful Rich TUI i
 - 📦 **Hybrid Backup Strategy** - rsync for volumes (efficient), tar for metadata (structured)
 - 🔄 **Incremental Backups** - Only backup changes using rsync `--link-dest`
 - ☁️ **Remote Storage** - Google Drive (rclone), SFTP, local directories
-- 🔁 **Backup Rotation** - Time-based retention with storage quota management
+- 🔁 **Backup Rotation** - Time-based retention with storage quota management ✅
 - ⚙️ **Flexible Configuration** - YAML config files with CLI overrides
 - 🎯 **Selective Backup** - Choose specific containers, volumes, or backup sets
 - 📊 **Progress Visualization** - Real-time progress bars and status displays
+- 📝 **Logging System** - File-based logging with rotation
+- ⌨️ **Keyboard Controls** - Q (quit), P (pause), S (skip), H (help)
 
 ## Installation
 
@@ -183,6 +185,9 @@ bbackup list-containers
 # List backup sets
 bbackup list-backup-sets
 
+# List backups on remote storage
+bbackup list-remote-backups --remote gdrive
+
 # Initialize config
 bbackup init-config
 ```
@@ -219,10 +224,11 @@ Options:
 ### Incremental Backups
 
 When `--incremental` is used or `incremental.enabled: true` in config:
-- rsync uses `--link-dest` to reference previous backups
+- rsync uses `--link-dest` to reference previous backups ✅
 - Only changed files are copied
 - Unchanged files are hardlinked (saves space)
 - Works best for volumes with large, slowly-changing data
+- Automatically finds previous backup for each volume
 
 ## Remote Storage
 
@@ -269,18 +275,20 @@ remotes:
 
 ## Backup Rotation
 
-### Time-Based Retention
+### Time-Based Retention ✅
 
 - **Daily**: Keep N most recent daily backups
 - **Weekly**: Keep N weekly backups (typically Sunday backups)
 - **Monthly**: Keep N monthly backups (first of month)
+- Automatically integrated into backup workflow
 
-### Storage Quota Management
+### Storage Quota Management ✅
 
 When storage quota is configured:
 - Warns when storage exceeds warning threshold
-- Automatically cleans up old backups when cleanup threshold is reached
+- Automatically cleans up old backups when cleanup threshold is reached ✅
 - Deletes oldest backups first (configurable strategy)
+- Runs automatically after each backup upload
 
 ## Project Structure
 
@@ -359,6 +367,14 @@ This tool is designed to be extracted into its own GitHub repository. Contributi
 ## Roadmap
 
 - [x] Restore functionality (✅ Implemented - see `docs/tests/TEST_RESULTS_COMPREHENSIVE.md`)
+- [x] Incremental backups with --link-dest (✅ Implemented)
+- [x] Backup rotation and retention (✅ Implemented)
+- [x] Logging system (✅ Implemented)
+- [x] Volume compression (✅ Implemented)
+- [x] Upload progress tracking (✅ Implemented)
+- [x] List remote backups (✅ Implemented - `list-remote-backups` command)
+- [x] Skip functionality (✅ Implemented - 'S' key)
+- [x] Help screen (✅ Implemented - 'H' key)
 - [ ] Backup verification/checksums
 - [ ] Email notifications
 - [ ] Webhook support

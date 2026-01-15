@@ -19,6 +19,7 @@ from .remote import RemoteStorageManager
 from .rotation import BackupRotation
 from .backup_runner import BackupRunner
 from .restore import DockerRestore
+from .logging import setup_logging
 
 
 @click.group()
@@ -35,6 +36,8 @@ def cli(ctx, config):
     ctx.ensure_object(dict)
     ctx.obj["config"] = Config(config_path=config)
     ctx.obj["console"] = Console()
+    # Setup logging
+    setup_logging(ctx.obj["config"])
 
 
 @cli.command()
@@ -488,6 +491,50 @@ def list_backups(ctx, backup_dir):
             backup["name"],
             backup["timestamp"],
             str(backup["path"]),
+        )
+    
+    console.print(table)
+
+
+@cli.command()
+@click.option(
+    "--remote",
+    "-r",
+    required=True,
+    help="Remote storage name to list backups from",
+)
+@click.pass_context
+def list_remote_backups(ctx, remote):
+    """List available backups on remote storage"""
+    config: Config = ctx.obj["config"]
+    console: Console = ctx.obj["console"]
+    
+    if remote not in config.remotes:
+        console.print(f"[red]Remote '{remote}' not found in configuration[/red]")
+        sys.exit(1)
+    
+    remote_storage = config.remotes[remote]
+    if not remote_storage.enabled:
+        console.print(f"[yellow]Remote '{remote}' is not enabled[/yellow]")
+        sys.exit(1)
+    
+    remote_mgr = RemoteStorageManager(config)
+    backups = remote_mgr.list_backups(remote_storage)
+    
+    if not backups:
+        console.print(f"[yellow]No backups found on remote '{remote}'[/yellow]")
+        return
+    
+    console.print(f"\n[bold]Available Backups on Remote '{remote}':[/bold]\n")
+    
+    table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+    table.add_column("Backup Name", style="cyan", width=40)
+    table.add_column("Remote Path", style="dim", width=50)
+    
+    for backup_name in backups:
+        table.add_row(
+            backup_name,
+            f"{remote_storage.path}/{backup_name}",
         )
     
     console.print(table)

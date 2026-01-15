@@ -14,6 +14,9 @@ import docker
 from docker.errors import DockerException, APIError
 
 from .config import Config
+from .logging import get_logger
+
+logger = get_logger('restore')
 
 
 class DockerRestore:
@@ -22,7 +25,9 @@ class DockerRestore:
     def __init__(self, config: Config):
         self.config = config
         try:
-            self.client = docker.from_env()
+            # Apply timeout from config if specified
+            timeout = config.data.get("docker", {}).get("timeout", 300)
+            self.client = docker.from_env(timeout=timeout)
         except DockerException as e:
             raise RuntimeError(f"Failed to connect to Docker: {e}")
     

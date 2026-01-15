@@ -11,6 +11,9 @@ from typing import Optional, List
 from rich.console import Console
 
 from .config import RemoteStorage, Config
+from .logging import get_logger
+
+logger = get_logger('remote')
 
 
 class RemoteStorageManager:
@@ -68,8 +71,14 @@ class RemoteStorageManager:
                         progress_callback(line)
             
             process.wait()
-            return process.returncode == 0
+            success = process.returncode == 0
+            if success:
+                logger.info(f"Successfully uploaded to rclone: {remote_path}")
+            else:
+                logger.error(f"Failed to upload to rclone: {remote_path}")
+            return success
         except Exception as e:
+            logger.error(f"Error uploading to rclone: {e}")
             self.console.print(f"[red]Error uploading to rclone: {e}[/red]")
             return False
     
@@ -183,6 +192,7 @@ class RemoteStorageManager:
         backup_name: str,
         progress_callback=None,
     ) -> bool:
+        """Upload backup to remote storage."""
         """Upload backup to remote storage."""
         remote_path = os.path.join(remote.path, backup_name).replace("\\", "/")
         

@@ -14,6 +14,9 @@ import docker
 from docker.errors import DockerException, APIError
 
 from .config import BackupScope, Config
+from .logging import get_logger
+
+logger = get_logger('docker_backup')
 
 
 class DockerBackup:
@@ -22,7 +25,9 @@ class DockerBackup:
     def __init__(self, config: Config):
         self.config = config
         try:
-            self.client = docker.from_env()
+            # Apply timeout from config if specified
+            timeout = config.data.get("docker", {}).get("timeout", 300)
+            self.client = docker.from_env(timeout=timeout)
         except DockerException as e:
             raise RuntimeError(f"Failed to connect to Docker: {e}")
     
@@ -75,6 +80,7 @@ class DockerBackup:
     
     def backup_container_config(self, container_name: str, backup_dir: Path) -> bool:
         """Backup container configuration (inspect data)."""
+        logger.debug(f"Backing up container config: {container_name}")
         try:
             container = self.client.containers.get(container_name)
             inspect_data = container.attrs
@@ -92,12 +98,15 @@ class DockerBackup:
             except Exception:
                 pass  # Logs might not be available
             
+            logger.debug(f"Successfully backed up container config: {container_name}")
             return True
         except APIError as e:
+            logger.error(f"API error backing up container config {container_name}: {e}")
             return False
     
     def backup_volume(self, volume_name: str, backup_dir: Path, incremental: bool = False) -> bool:
         """Backup Docker volume using Docker container and rsync."""
+        logger.info(f"Backing up volume: {volume_name} (incremental={incremental})")
         try:
             volume = self.client.volumes.get(volume_name)
             volume_backup_dir = backup_dir / "volumes" / volume_name
@@ -138,6 +147,26 @@ class DockerBackup:
                         "rsync", "-av", "--delete", "/volume_data/", "/tmp/backup/"
                     ]
                     
+                    # Add --link-dest for incremental backups
+                    if incremental:
+                        prev_backup = self._find_previous_volume_backup(volume_name, backup_dir.parent)
+                        if prev_backup:
+                            # Mount previous backup as read-only in container for --link-dest
+                            # We need to copy the path into the container's filesystem
+                            # Since we can't easily mount host paths, we'll use the host path directly
+                            # by copying previous backup into container first
+                            prev_backup_in_container = f"/tmp/prev_backup_{volume_name}"
+                            subprocess.run(
+                                ["docker", "exec", temp_container_name, "mkdir", "-p", prev_backup_in_container],
+                                check=False,
+                            )
+                            # Copy previous backup into container
+                            subprocess.run(
+                                ["docker", "cp", f"{str(prev_backup)}/.", f"{temp_container_name}:{prev_backup_in_container}/"],
+                                check=False,
+                            )
+                            rsync_cmd.extend(["--link-dest", prev_backup_in_container])
+                    
                     # Create backup directory in container
                     subprocess.run(
                         ["docker", "exec", temp_container_name, "mkdir", "-p", "/tmp/backup"],
@@ -177,6 +206,34 @@ class DockerBackup:
                 temp_container.stop()
                 temp_container.remove()
                 
+                # Apply compression if enabled
+                compression = self.config.data.get("backup", {}).get("compression", {})
+                if compression.get("enabled", False) and volume_backup_dir.exists():
+                    # Determine compression format
+                    format_map = {
+                        "gzip": "gz",
+                        "bzip2": "bz2",
+                        "xz": "xz"
+                    }
+                    comp_format = compression.get("format", "gzip")
+                    comp_ext = format_map.get(comp_format, "gz")
+                    
+                    # Create compressed tar archive
+                    tar_file = backup_dir / "volumes" / f"{volume_name}.tar.{comp_ext}"
+                    mode_map = {
+                        "gzip": "w:gz",
+                        "bzip2": "w:bz2",
+                        "xz": "w:xz"
+                    }
+                    mode = mode_map.get(comp_format, "w:gz")
+                    
+                    with tarfile.open(tar_file, mode) as tar:
+                        tar.add(volume_backup_dir, arcname=volume_name)
+                    
+                    # Remove uncompressed directory
+                    import shutil
+                    shutil.rmtree(volume_backup_dir)
+                
                 return True
                 
             except Exception as e:
@@ -185,8 +242,9 @@ class DockerBackup:
                     temp_container = self.client.containers.get(temp_container_name)
                     temp_container.stop()
                     temp_container.remove()
-                except:
-                    pass
+                except Exception as cleanup_error:
+                    logger.error(f"Error during cleanup: {cleanup_error}")
+                logger.error(f"Failed to backup volume {volume_name}: {e}")
                 return False
                 
         except APIError:
@@ -223,8 +281,10 @@ class DockerBackup:
             with open(network_file, 'w') as f:
                 json.dump(network_data, f, indent=2)
             
+            logger.debug(f"Successfully backed up network: {network_name}")
             return True
-        except APIError:
+        except APIError as e:
+            logger.error(f"API error backing up network {network_name}: {e}")
             return False
     
     def create_metadata_archive(self, backup_dir: Path, output_file: Path) -> bool:
