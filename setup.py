@@ -35,12 +35,9 @@ setup(
     entry_points={
         "console_scripts": [
             "bbackup=bbackup.cli:cli",
+            "bbman=bbackup.bbman_entry:cli",
         ],
     },
-    scripts=[
-        "bbackup.py",
-        "bbman.py",
-    ],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: System Administrators",
