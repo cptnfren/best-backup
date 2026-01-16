@@ -88,13 +88,34 @@ python3 bbackup.py init-config
 
 ### Install as System Command
 
-```bash
-# Option 1: Using pip (recommended)
-pip install -e .
+**Recommended:** Install via pip to register as system commands:
 
-# Option 2: Create symlinks
+```bash
+# Development mode (editable, changes take effect immediately)
+pip3 install -e .
+
+# Or normal install (copies files)
+pip3 install .
+```
+
+After installation, both `bbackup` and `bbman` are available as system commands from anywhere.
+
+**Alternative:** Create symlinks (quick, no installation):
+```bash
+# Make scripts executable
+chmod +x bbackup.py bbman.py
+
+# Create symlinks (requires sudo)
 sudo ln -s $(pwd)/bbackup.py /usr/local/bin/bbackup
 sudo ln -s $(pwd)/bbman.py /usr/local/bin/bbman
+```
+
+**Verify installation:**
+```bash
+which bbackup
+which bbman
+bbackup --version
+bbman --version
 ```
 
 ## 🎯 Quick Start

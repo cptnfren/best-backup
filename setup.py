@@ -37,6 +37,10 @@ setup(
             "bbackup=bbackup.cli:cli",
         ],
     },
+    scripts=[
+        "bbackup.py",
+        "bbman.py",
+    ],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: System Administrators",

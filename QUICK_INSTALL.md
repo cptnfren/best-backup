@@ -43,12 +43,23 @@ python3 bbman.py run init-encryption --method asymmetric
 
 ```bash
 cd best-backup
-pip install -e .
-# or
-pip install .
+
+# Development mode (editable, changes take effect immediately)
+pip3 install -e .
+
+# Or normal install (copies files)
+pip3 install .
 ```
 
-This installs `bbackup` as a system command available everywhere.
+This installs both `bbackup` and `bbman` as system commands available everywhere.
+
+**Verify installation:**
+```bash
+which bbackup
+which bbman
+bbackup --version
+bbman --version
+```
 
 ### Option 2: Create Symlink (Quick)
 
