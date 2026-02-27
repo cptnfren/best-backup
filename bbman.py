@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 """
-bbman - bbackup Management Wrapper
-Universal wrapper script for managing bbackup application lifecycle.
+bbman.py
+Purpose: bbackup Management Wrapper. Provides setup, health, dependency,
+         status, cleanup, diagnostics, update, and run subcommands with
+         AI-agent-friendly JSON I/O via --output json, --input-json, and
+         the `skills` subcommand for progressive capability discovery.
+Created: 2025-01-01
+Last Updated: 2026-02-27
 """
 
+import json
 import os
 import sys
 import subprocess
@@ -13,166 +19,324 @@ from typing import Optional
 import click
 from rich.console import Console
 
-# Default repository URL: auto-detected from git remote, then falls back to a
-# placeholder. Set BBACKUP_REPO_URL env var or run `bbman repo-url --url URL`
-# to configure permanently.
+# Gap 12: import __version__ instead of hardcoding "1.0.0"
+from bbackup import __version__
+
+from bbackup.cli_utils import (
+    output_option,
+    input_json_option,
+    merge_json_input,
+    render_output,
+    json_error,
+    flatten_health_tuples,
+    EXIT_SUCCESS,
+    EXIT_USER_ERROR,
+    EXIT_CONFIG_ERROR,
+    EXIT_SYSTEM_ERROR,
+    EXIT_PARTIAL,
+    EXIT_CANCELLED,
+    BBACKUP_NO_INTERACTIVE_ENV,
+)
+from bbackup.skills import get_skill
+
+# Default repository URL: auto-detected from git remote, then placeholder.
+# Set BBACKUP_REPO_URL env var or run `bbman repo-url --url URL` to override.
 try:
-    import subprocess
-    result = subprocess.run(
+    _git_result = subprocess.run(
         ["git", "remote", "get-url", "origin"],
         capture_output=True,
         text=True,
         timeout=2,
-        cwd=Path(__file__).parent
+        cwd=Path(__file__).parent,
     )
-    if result.returncode == 0:
-        DEFAULT_REPO_URL = result.stdout.strip().replace(".git", "")
+    if _git_result.returncode == 0:
+        DEFAULT_REPO_URL = _git_result.stdout.strip().replace(".git", "")
     else:
         DEFAULT_REPO_URL = "https://github.com/YOUR_USERNAME/best-backup"
 except Exception:
     DEFAULT_REPO_URL = "https://github.com/YOUR_USERNAME/best-backup"
 
-# Add bbackup to path
 sys.path.insert(0, str(Path(__file__).parent))
 
 console = Console()
 
 
 @click.group()
-@click.version_option(version="1.0.0")
+@click.version_option(version=__version__, prog_name="bbman")
 @click.pass_context
 def cli(ctx):
-    """bbman - bbackup Management Wrapper
-    
-    Comprehensive management tool for bbackup application.
-    Provides first-run setup, version checking, health diagnostics, and more.
+    """bbman - bbackup Management Wrapper.
+
+    Comprehensive management tool for bbackup: first-run setup, version
+    checking, health diagnostics, cleanup, and more.
+    Set BBACKUP_OUTPUT=json to make all commands emit structured JSON.
+    Set BBACKUP_NO_INTERACTIVE=1 for fully non-interactive execution.
     """
     ctx.ensure_object(dict)
     ctx.obj["console"] = console
-    
-    # Get actual repo URL (with overrides)
+
     try:
         from bbackup.management.repo import get_repo_url
         ctx.obj["repo_url"] = get_repo_url()
     except Exception:
         ctx.obj["repo_url"] = DEFAULT_REPO_URL
-    
-    # Check for first run
+
     try:
         from bbackup.management.first_run import is_first_run
         if is_first_run():
-            console.print("[yellow]⚠ First run detected. Run 'bbman setup' to configure.[/yellow]")
+            console.print("[yellow]First run detected. Run 'bbman setup' to configure.[/yellow]")
     except Exception:
-        pass  # Continue if check fails
+        pass
 
+
+# ---------------------------------------------------------------------------
+# setup
+# ---------------------------------------------------------------------------
 
 @cli.command()
+@click.option(
+    "--no-interactive",
+    is_flag=True,
+    default=False,
+    help="Skip the interactive wizard; return current config state. Set BBACKUP_NO_INTERACTIVE=1 globally.",
+)
+@output_option
+@input_json_option
 @click.pass_context
-def setup(ctx):
+def setup(ctx, no_interactive, output, input_json):
     """Run interactive setup wizard for first-time configuration."""
+    merge_json_input(ctx, input_json)
+    no_interactive = no_interactive or os.environ.get(BBACKUP_NO_INTERACTIVE_ENV) == "1"
+
+    if no_interactive:
+        # Non-interactive: skip wizard, return config state
+        result = {
+            "completed": False,
+            "skipped_wizard": True,
+            "config_path": None,
+            "errors": ["Interactive setup required; re-run without --no-interactive"],
+        }
+        render_output(result, output, "setup", success=False, errors=result["errors"])
+        if output != "json":
+            console.print("[yellow]Wizard skipped (--no-interactive). Run without flag to configure.[/yellow]")
+        sys.exit(EXIT_USER_ERROR)
+
     try:
         from bbackup.management.setup_wizard import run_setup_wizard
         success = run_setup_wizard()
-        sys.exit(0 if success else 1)
+        result = {"completed": success, "skipped_wizard": False}
+        render_output(result, output, "setup", success=success)
+        sys.exit(EXIT_SUCCESS if success else EXIT_SYSTEM_ERROR)
     except Exception as e:
-        console.print(f"[red]Error running setup wizard: {e}[/red]")
-        sys.exit(1)
+        render_output({}, output, "setup", success=False, errors=[str(e)])
+        if output != "json":
+            console.print(f"[red]Error running setup wizard: {e}[/red]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
+
+# ---------------------------------------------------------------------------
+# health
+# ---------------------------------------------------------------------------
 
 @cli.command()
+@output_option
+@input_json_option
 @click.pass_context
-def health(ctx):
-    """Run comprehensive health check."""
+def health(ctx, output, input_json):
+    """Run comprehensive health check (Docker, rsync, rclone, Python packages)."""
+    merge_json_input(ctx, input_json)
+
     try:
         from bbackup.management.health import run_health_check, display_health_report
-        
+
         results = run_health_check()
-        display_health_report(results)
-        
-        sys.exit(0 if results.get("all_critical_ok") else 1)
+
+        # Gap 3: flatten tuple values for JSON consumers
+        json_results = flatten_health_tuples(results)
+        render_output(json_results, output, "health", success=bool(results.get("all_critical_ok")))
+
+        if output != "json":
+            display_health_report(results)
+
+        sys.exit(EXIT_SUCCESS if results.get("all_critical_ok") else EXIT_SYSTEM_ERROR)
     except Exception as e:
-        console.print(f"[red]Error running health check: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
+        render_output({}, output, "health", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error running health check: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
 
-@cli.command()
+# ---------------------------------------------------------------------------
+# check-deps
+# ---------------------------------------------------------------------------
+
+@cli.command("check-deps")
 @click.option("--install", "-i", is_flag=True, help="Install missing packages")
+@output_option
+@input_json_option
 @click.pass_context
-def check_deps(ctx, install):
-    """Check and install missing dependencies."""
+def check_deps(ctx, install, output, input_json):
+    """Check and optionally install missing dependencies."""
+    merge_json_input(ctx, input_json)
+
     try:
         from bbackup.management.dependencies import check_and_install_dependencies, display_dependency_report
-        
+
         results = check_and_install_dependencies(install_missing=install)
-        display_dependency_report(results)
-        
+
+        # Gap 3: flatten tuple values in nested "system" dict
+        json_results = dict(results)
+        if "system" in json_results and isinstance(json_results["system"], dict):
+            json_results["system"] = flatten_health_tuples(json_results["system"])
+        if "python_packages" in json_results and isinstance(json_results["python_packages"], tuple):
+            json_results["python_packages"] = flatten_health_tuples(
+                {"python_packages": json_results["python_packages"]}
+            )["python_packages"]
+
         all_ok = results.get("python_all_installed", False)
-        sys.exit(0 if all_ok else 1)
+        render_output(json_results, output, "check-deps", success=all_ok)
+
+        if output != "json":
+            display_dependency_report(results)
+
+        sys.exit(EXIT_SUCCESS if all_ok else EXIT_SYSTEM_ERROR)
     except Exception as e:
-        console.print(f"[red]Error checking dependencies: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
+        render_output({}, output, "check-deps", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error checking dependencies: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
 
-@cli.command()
+# ---------------------------------------------------------------------------
+# validate-config
+# ---------------------------------------------------------------------------
+
+@cli.command("validate-config")
+@output_option
+@input_json_option
 @click.pass_context
-def validate_config(ctx):
+def validate_config(ctx, output, input_json):
     """Validate configuration file."""
+    merge_json_input(ctx, input_json)
+
     try:
         from bbackup.config import Config
-        from pathlib import Path
-        
-        config = Config()
-        
-        if not config.config_path:
-            console.print("[yellow]⚠ No config file found, using defaults[/yellow]")
-            console.print("[dim]Run 'bbman setup' to create a config file[/dim]")
-            sys.exit(0)
-        
-        console.print(f"[green]✓ Config file valid: {config.config_path}[/green]")
-        console.print(f"[dim]Backup sets: {len(config.backup_sets)}[/dim]")
-        console.print(f"[dim]Enabled remotes: {len([r for r in config.remotes.values() if r.enabled])}[/dim]")
-        console.print(f"[dim]Encryption: {'enabled' if config.encryption.enabled else 'disabled'}[/dim]")
-        
-        sys.exit(0)
-    except Exception as e:
-        console.print(f"[red]✗ Config validation failed: {e}[/red]")
-        sys.exit(1)
 
+        config = Config()
+
+        if not config.config_path:
+            result = {
+                "valid": False,
+                "config_path": None,
+                "backup_sets": 0,
+                "enabled_remotes": 0,
+                "encryption": "disabled",
+                "message": "No config file found, using defaults. Run 'bbman setup' to create one.",
+            }
+            render_output(result, output, "validate-config", success=True)
+            if output != "json":
+                console.print("[yellow]No config file found, using defaults[/yellow]")
+                console.print("[dim]Run 'bbman setup' to create a config file[/dim]")
+            sys.exit(EXIT_SUCCESS)
+
+        result = {
+            "valid": True,
+            "config_path": str(config.config_path),
+            "backup_sets": len(config.backup_sets),
+            "enabled_remotes": len([r for r in config.remotes.values() if r.enabled]),
+            "encryption": "enabled" if config.encryption.enabled else "disabled",
+        }
+        render_output(result, output, "validate-config", success=True)
+        if output != "json":
+            console.print(f"[green]Config file valid: {config.config_path}[/green]")
+            console.print(f"[dim]Backup sets: {result['backup_sets']}[/dim]")
+            console.print(f"[dim]Enabled remotes: {result['enabled_remotes']}[/dim]")
+            console.print(f"[dim]Encryption: {result['encryption']}[/dim]")
+        sys.exit(EXIT_SUCCESS)
+    except Exception as e:
+        render_output({}, output, "validate-config", success=False, errors=[str(e)])
+        if output != "json":
+            console.print(f"[red]Config validation failed: {e}[/red]")
+        sys.exit(EXIT_CONFIG_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# status
+# ---------------------------------------------------------------------------
 
 @cli.command()
+@output_option
+@input_json_option
 @click.pass_context
-def status(ctx):
+def status(ctx, output, input_json):
     """Show backup status and history."""
-    try:
-        from bbackup.management.status import display_backup_status
-        from bbackup.config import Config
-        
-        config = Config()
-        display_backup_status(config)
-    except Exception as e:
-        console.print(f"[red]Error checking status: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
+    merge_json_input(ctx, input_json)
 
+    try:
+        from bbackup.config import Config
+
+        config = Config()
+
+        # Gap 4: in JSON mode bypass display_backup_status() and use raw data
+        if output == "json":
+            try:
+                from bbackup.management.status import get_backup_statistics, list_local_backups
+                stats = get_backup_statistics(config)
+                history = list_local_backups(config)
+                result = {
+                    "total_backups": stats.get("total_backups", 0),
+                    "total_size_bytes": stats.get("total_size", 0),
+                    "encrypted_backups": stats.get("encrypted_backups", 0),
+                    "latest_backup": stats.get("latest_backup"),
+                    "history": history,
+                }
+            except AttributeError:
+                # Fallback: module may not expose these functions yet
+                result = {"message": "Status module does not expose raw data functions; run without --output json for full report."}
+            render_output(result, output, "status")
+        else:
+            from bbackup.management.status import display_backup_status
+            display_backup_status(config)
+
+        sys.exit(EXIT_SUCCESS)
+    except Exception as e:
+        render_output({}, output, "status", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error checking status: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# cleanup
+# ---------------------------------------------------------------------------
 
 @cli.command()
 @click.option("--staging-days", default=7, help="Keep staging files newer than N days")
 @click.option("--log-days", default=30, help="Keep log files newer than N days")
 @click.option("--no-backups", is_flag=True, help="Don't cleanup old backups")
 @click.option("--no-temp", is_flag=True, help="Don't cleanup temporary files")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@output_option
+@input_json_option
 @click.pass_context
-def cleanup(ctx, staging_days, log_days, no_backups, no_temp, yes):
+def cleanup(ctx, staging_days, log_days, no_backups, no_temp, yes, output, input_json):
     """Cleanup old files and backups."""
+    merge_json_input(ctx, input_json)
+
+    # In JSON mode skip interactive confirmation automatically
+    if output == "json" and not yes:
+        yes = True
+
     try:
         from bbackup.management.cleanup import run_cleanup
         from bbackup.config import Config
-        
+
         config = Config()
         results = run_cleanup(
             config=config,
@@ -180,213 +344,356 @@ def cleanup(ctx, staging_days, log_days, no_backups, no_temp, yes):
             log_days=log_days,
             cleanup_backups=not no_backups,
             cleanup_temp=not no_temp,
-            confirm=not yes
+            confirm=not yes,
         )
-        
-        total_removed = (
-            results["staging_removed"] +
-            results["logs_removed"] +
-            results["backups_removed"] +
-            results["temp_removed"]
-        )
-        
-        console.print(f"\n[green]✓ Cleanup complete: {total_removed} items removed[/green]")
-    except Exception as e:
-        console.print(f"[red]Error during cleanup: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
 
+        # Gap 5: use .get("kept", 0) to guarantee stable shape
+        result_data = {
+            "staging_removed": results.get("staging_removed", 0),
+            "logs_removed": results.get("logs_removed", 0),
+            "backups_removed": results.get("backups_removed", 0),
+            "backups_kept": results.get("kept", 0),
+            "backups_freed_bytes": results.get("backups_freed_space", 0),
+            "temp_removed": results.get("temp_removed", 0),
+        }
+
+        total_removed = (
+            result_data["staging_removed"]
+            + result_data["logs_removed"]
+            + result_data["backups_removed"]
+            + result_data["temp_removed"]
+        )
+        result_data["total_removed"] = total_removed
+
+        render_output(result_data, output, "cleanup")
+        if output != "json":
+            console.print(f"\n[green]Cleanup complete: {total_removed} items removed[/green]")
+        sys.exit(EXIT_SUCCESS)
+    except Exception as e:
+        render_output({}, output, "cleanup", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error during cleanup: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# diagnostics
+# ---------------------------------------------------------------------------
 
 @cli.command()
-@click.option("--output", "-o", type=click.Path(), help="Save report to file")
+@click.option(
+    "--report-file",
+    "-f",
+    type=click.Path(),
+    help="Save diagnostics report to this file path",
+)
+@output_option
+@input_json_option
 @click.pass_context
-def diagnostics(ctx, output):
-    """Run diagnostics and generate report."""
+def diagnostics(ctx, report_file, output, input_json):
+    """Run diagnostics and optionally save report to file."""
+    merge_json_input(ctx, input_json)
+
     try:
         from bbackup.management.diagnostics import run_diagnostics, display_diagnostics_report, generate_diagnostics_report
         from bbackup.config import Config
-        from pathlib import Path
-        
+
         config = Config()
         diagnostics_data = run_diagnostics(config)
-        
-        display_diagnostics_report(diagnostics_data)
-        
-        if output:
-            output_path = Path(output)
-            report_text = generate_diagnostics_report(diagnostics_data, output_path)
-            console.print(f"\n[green]✓ Report saved to: {output_path}[/green]")
+
+        result_data = dict(diagnostics_data)
+        if report_file:
+            output_path = Path(report_file)
+            generate_diagnostics_report(diagnostics_data, output_path)
+            result_data["report_saved_to"] = str(output_path)
+
+        render_output(result_data, output, "diagnostics")
+        if output != "json":
+            display_diagnostics_report(diagnostics_data)
+            if report_file:
+                console.print(f"\n[green]Report saved to: {report_file}[/green]")
+        sys.exit(EXIT_SUCCESS)
     except Exception as e:
-        console.print(f"[red]Error running diagnostics: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
+        render_output({}, output, "diagnostics", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error running diagnostics: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
 
-@cli.command()
-@click.option("--branch", default="main", help="Branch to check")
+# ---------------------------------------------------------------------------
+# check-updates
+# ---------------------------------------------------------------------------
+
+@cli.command("check-updates")
+@click.option("--branch", default="main", help="Branch to check (default: main)")
+@output_option
+@input_json_option
 @click.pass_context
-def check_updates(ctx, branch):
-    """Check for updates (file-level with checksums)."""
+def check_updates(ctx, branch, output, input_json):
+    """Check for updates (file-level comparison with checksums)."""
+    merge_json_input(ctx, input_json)
+
     try:
         from bbackup.management.version import check_for_updates
-        from pathlib import Path
-        
+
         repo_root = Path(__file__).parent
         repo_url = ctx.obj.get("repo_url", DEFAULT_REPO_URL)
-        
-        console.print(f"[cyan]Checking for updates from {repo_url} (branch: {branch})...[/cyan]")
-        
-        result = check_for_updates(repo_root, repo_url, branch)
-        
-        if result.get("error"):
-            console.print(f"[red]Error: {result['error']}[/red]")
-            sys.exit(1)
-        
-        if result.get("has_updates"):
-            console.print("[yellow]⚠ Updates available![/yellow]")
-            console.print(f"[dim]Changed files: {len(result.get('changed', []))}[/dim]")
-            console.print(f"[dim]New files: {len(result.get('new', []))}[/dim]")
-            console.print(f"[dim]Removed files: {len(result.get('removed', []))}[/dim]")
-            
-            if result.get("changed"):
-                console.print("\n[bold]Changed files:[/bold]")
-                for file in result["changed"][:10]:  # Show first 10
-                    console.print(f"  [yellow]• {file}[/yellow]")
-                if len(result["changed"]) > 10:
-                    console.print(f"  [dim]... and {len(result['changed']) - 10} more[/dim]")
-            
-            console.print("\n[cyan]Run 'bbman update' to update[/cyan]")
-        else:
-            console.print("[green]✓ No updates available[/green]")
-            console.print(f"[dim]Local files: {result.get('local_count', 0)}, Remote files: {result.get('remote_count', 0)}[/dim]")
-    except Exception as e:
-        console.print(f"[red]Error checking updates: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
 
+        if output != "json":
+            console.print(f"[cyan]Checking for updates from {repo_url} (branch: {branch})...[/cyan]")
+
+        result = check_for_updates(repo_root, repo_url, branch)
+
+        if result.get("error"):
+            render_output(result, output, "check-updates", success=False, errors=[result["error"]])
+            if output != "json":
+                console.print(f"[red]Error: {result['error']}[/red]")
+            sys.exit(EXIT_SYSTEM_ERROR)
+
+        render_output(result, output, "check-updates", success=True)
+
+        if output != "json":
+            if result.get("has_updates"):
+                console.print("[yellow]Updates available![/yellow]")
+                console.print(f"[dim]Changed files: {len(result.get('changed', []))}[/dim]")
+                console.print(f"[dim]New files: {len(result.get('new', []))}[/dim]")
+                console.print(f"[dim]Removed files: {len(result.get('removed', []))}[/dim]")
+                if result.get("changed"):
+                    console.print("\n[bold]Changed files:[/bold]")
+                    for f in result["changed"][:10]:
+                        console.print(f"  [yellow]x {f}[/yellow]")
+                    if len(result["changed"]) > 10:
+                        console.print(f"  [dim]... and {len(result['changed']) - 10} more[/dim]")
+                console.print("\n[cyan]Run 'bbman update' to update[/cyan]")
+            else:
+                console.print("[green]No updates available[/green]")
+                console.print(f"[dim]Local files: {result.get('local_count', 0)}, Remote files: {result.get('remote_count', 0)}[/dim]")
+        sys.exit(EXIT_SUCCESS)
+    except Exception as e:
+        render_output({}, output, "check-updates", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error checking updates: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# update
+# ---------------------------------------------------------------------------
 
 @cli.command()
-@click.option("--branch", default="main", help="Branch to update from")
+@click.option("--branch", default="main", help="Branch to update from (default: main)")
 @click.option("--method", type=click.Choice(["git", "download"]), default="git", help="Update method")
-@click.option("--yes", "-y", is_flag=True, help="Skip confirmation")
+@click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@output_option
+@input_json_option
 @click.pass_context
-def update(ctx, branch, method, yes):
+def update(ctx, branch, method, yes, output, input_json):
     """Update application files."""
+    merge_json_input(ctx, input_json)
+
+    # In JSON mode skip interactive confirmation automatically
+    if output == "json" and not yes:
+        yes = True
+
     try:
         from bbackup.management.updater import perform_update
         from bbackup.management.version import check_for_updates
-        from pathlib import Path
-        
+
         repo_root = Path(__file__).parent
         repo_url = ctx.obj.get("repo_url", DEFAULT_REPO_URL)
-        
-        # Check for updates first
-        console.print(f"[cyan]Checking for updates from {repo_url} (branch: {branch})...[/cyan]")
+
+        if output != "json":
+            console.print(f"[cyan]Checking for updates from {repo_url} (branch: {branch})...[/cyan]")
+
         update_info = check_for_updates(repo_root, repo_url, branch)
-        
+
         if not update_info.get("has_updates"):
-            console.print("[green]✓ No updates available[/green]")
-            return
-        
-        # Show what will be updated
-        console.print(f"[yellow]⚠ Updates available:[/yellow]")
-        console.print(f"  [dim]Changed: {len(update_info.get('changed', []))} files[/dim]")
-        console.print(f"  [dim]New: {len(update_info.get('new', []))} files[/dim]")
-        console.print(f"  [dim]Removed: {len(update_info.get('removed', []))} files[/dim]")
-        
-        if not yes:
+            render_output({"has_updates": False}, output, "update")
+            if output != "json":
+                console.print("[green]No updates available[/green]")
+            sys.exit(EXIT_SUCCESS)
+
+        if output != "json":
+            console.print(f"[yellow]Updates available:[/yellow]")
+            console.print(f"  [dim]Changed: {len(update_info.get('changed', []))} files[/dim]")
+            console.print(f"  [dim]New: {len(update_info.get('new', []))} files[/dim]")
+            console.print(f"  [dim]Removed: {len(update_info.get('removed', []))} files[/dim]")
+
+        if not yes and output != "json":
             from rich.prompt import Confirm
             if not Confirm.ask("Proceed with update?", default=True):
+                render_output({"cancelled": True}, output, "update", success=False, errors=["Update cancelled by user"])
                 console.print("[dim]Update cancelled[/dim]")
-                return
-        
-        # Perform update
-        console.print(f"[cyan]Updating using {method} method...[/cyan]")
+                sys.exit(EXIT_CANCELLED)
+
+        if output != "json":
+            console.print(f"[cyan]Updating using {method} method...[/cyan]")
+
         result = perform_update(repo_root, repo_url, branch, method)
-        
-        if result.get("success"):
-            console.print(f"[green]✓ Update completed successfully![/green]")
-            console.print(f"[dim]Files updated: {result.get('files_updated', 0)}[/dim]")
-            if result.get("backup_dir"):
-                console.print(f"[dim]Backup saved to: {result['backup_dir']}[/dim]")
-        else:
-            console.print(f"[red]✗ Update failed: {result.get('message', 'Unknown error')}[/red]")
-            sys.exit(1)
+
+        render_output(result, output, "update", success=bool(result.get("success")))
+        if output != "json":
+            if result.get("success"):
+                console.print(f"[green]Update completed successfully![/green]")
+                console.print(f"[dim]Files updated: {result.get('files_updated', 0)}[/dim]")
+                if result.get("backup_dir"):
+                    console.print(f"[dim]Backup saved to: {result['backup_dir']}[/dim]")
+            else:
+                console.print(f"[red]Update failed: {result.get('message', 'Unknown error')}[/red]")
+                sys.exit(EXIT_SYSTEM_ERROR)
+        sys.exit(EXIT_SUCCESS if result.get("success") else EXIT_SYSTEM_ERROR)
     except Exception as e:
-        console.print(f"[red]Error during update: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
+        render_output({}, output, "update", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error during update: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
 
-@cli.command()
+# ---------------------------------------------------------------------------
+# repo-url
+# ---------------------------------------------------------------------------
+
+@cli.command("repo-url")
 @click.option("--url", help="Set repository URL override")
+@output_option
+@input_json_option
 @click.pass_context
-def repo_url(ctx, url):
-    """Show or set repository URL override."""
+def repo_url(ctx, url, output, input_json):
+    """Show or set the repository URL override."""
+    merge_json_input(ctx, input_json)
+
     try:
         from bbackup.management.repo import get_repo_url, set_repo_url, parse_repo_url
-        
+
         if url:
             if set_repo_url(url):
-                console.print(f"[green]✓ Repository URL set to: {url}[/green]")
                 parsed = parse_repo_url(url)
-                console.print(f"[dim]Type: {parsed['type']}, Owner: {parsed['owner']}, Repo: {parsed['repo']}[/dim]")
+                result = {"set": True, "url": url, "parsed": parsed}
+                render_output(result, output, "repo-url")
+                if output != "json":
+                    console.print(f"[green]Repository URL set to: {url}[/green]")
+                    console.print(f"[dim]Type: {parsed['type']}, Owner: {parsed['owner']}, Repo: {parsed['repo']}[/dim]")
             else:
-                console.print(f"[red]✗ Failed to set repository URL[/red]")
-                sys.exit(1)
+                render_output({}, output, "repo-url", success=False, errors=["Failed to set repository URL"])
+                if output != "json":
+                    console.print("[red]Failed to set repository URL[/red]")
+                sys.exit(EXIT_SYSTEM_ERROR)
         else:
             current_url = get_repo_url()
-            console.print(f"[cyan]Current repository URL: {current_url}[/cyan]")
             parsed = parse_repo_url(current_url)
-            if parsed['type'] != 'unknown':
-                console.print(f"[dim]Type: {parsed['type']}, Owner: {parsed['owner']}, Repo: {parsed['repo']}[/dim]")
-            console.print("[dim]Override via: BBACKUP_REPO_URL env var or config file[/dim]")
+            result = {"url": current_url, "parsed": parsed}
+            render_output(result, output, "repo-url")
+            if output != "json":
+                console.print(f"[cyan]Current repository URL: {current_url}[/cyan]")
+                if parsed["type"] != "unknown":
+                    console.print(f"[dim]Type: {parsed['type']}, Owner: {parsed['owner']}, Repo: {parsed['repo']}[/dim]")
+                console.print("[dim]Override via: BBACKUP_REPO_URL env var or config file[/dim]")
+        sys.exit(EXIT_SUCCESS)
     except Exception as e:
-        console.print(f"[red]Error: {e}[/red]")
-        sys.exit(1)
+        render_output({}, output, "repo-url", success=False, errors=[str(e)])
+        if output != "json":
+            console.print(f"[red]Error: {e}[/red]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
+
+# ---------------------------------------------------------------------------
+# run
+# ---------------------------------------------------------------------------
 
 @cli.command(context_settings={"ignore_unknown_options": True, "allow_extra_args": True})
 @click.argument("command", nargs=-1)
+@output_option
 @click.pass_context
-def run(ctx, command):
+def run(ctx, command, output):
     """Launch main bbackup application.
-    
+
     Pass any bbackup command and arguments after 'run'.
-    Example: bbman run backup --containers my_container
+    Example: bbman run backup --containers my_container --no-interactive --output json
     """
-    # Import and run bbackup CLI
     try:
         from bbackup.cli import cli as bbackup_cli
-        
-        # Reconstruct sys.argv for bbackup
-        # Remove 'bbman' and 'run', keep everything else
+
+        # Gap 13: in JSON mode capture subprocess output and wrap in envelope
+        if output == "json":
+            proc = subprocess.run(
+                ["bbackup"] + list(command),
+                capture_output=True,
+                text=True,
+            )
+            render_output(
+                {"exit_code": proc.returncode, "output": proc.stdout},
+                output,
+                "run",
+                success=(proc.returncode == 0),
+                errors=[proc.stderr] if proc.stderr.strip() else [],
+            )
+            sys.exit(proc.returncode)
+
         original_argv = sys.argv[:]
         try:
-            # Find 'run' in argv and replace with bbackup command
-            if 'run' in sys.argv:
-                run_idx = sys.argv.index('run')
+            if "run" in sys.argv:
+                run_idx = sys.argv.index("run")
                 sys.argv = ["bbackup"] + sys.argv[run_idx + 1:]
             else:
-                # Fallback: use command tuple
                 sys.argv = ["bbackup"] + list(command) if command else ["bbackup"]
-            
             bbackup_cli()
         finally:
             sys.argv = original_argv
     except ImportError as e:
-        console.print(f"[red]Error importing bbackup: {e}[/red]")
-        sys.exit(1)
+        render_output({}, output, "run", success=False, errors=[str(e)])
+        if output != "json":
+            console.print(f"[red]Error importing bbackup: {e}[/red]")
+        sys.exit(EXIT_SYSTEM_ERROR)
     except Exception as e:
-        console.print(f"[red]Error running bbackup: {e}[/red]")
-        import traceback
-        console.print(f"[dim]{traceback.format_exc()}[/dim]")
-        sys.exit(1)
+        render_output({}, output, "run", success=False, errors=[str(e)])
+        if output != "json":
+            import traceback
+            console.print(f"[red]Error running bbackup: {e}[/red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
+
+# ---------------------------------------------------------------------------
+# skills
+# ---------------------------------------------------------------------------
+
+@cli.command("skills")
+@click.argument("skill_id", required=False)
+@output_option
+def skills(skill_id, output):
+    """List available skills for AI agent discovery. Pass SKILL_ID for step-by-step detail."""
+    result = get_skill("bbman", skill_id)
+    if result is None:
+        json_error(
+            "skills",
+            f"Unknown skill: {skill_id!r}. Run 'bbman skills' for valid ids.",
+            EXIT_USER_ERROR,
+            output,
+        )
+
+    if skill_id is None:
+        sys.stdout.write(json.dumps(result, indent=2, default=str) + "\n")
+    else:
+        render_output(result, output, "skills")
+        if output != "json":
+            console.print(f"\n[bold cyan]{result['id']}[/bold cyan]: {result['summary']}")
+            console.print(f"\nWorkflow: {' -> '.join(result.get('workflow', []))}")
+            console.print("\nExamples:")
+            for ex in result.get("examples", []):
+                console.print(f"  [dim]{ex}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     cli()

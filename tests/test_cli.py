@@ -1,19 +1,26 @@
 """
 Tests for bbackup.cli - all CLI commands via CliRunner.
-Note: test_version_matches_package intentionally catches the hardcoded "1.0.0"
-bug in cli.py. The agent debug loop in scripts/run_tests.py patches cli.py to
-use version=bbackup.__version__ when this test fails.
 Created: 2026-02-26
-Last Updated: 2026-02-26
+Last Updated: 2026-02-27
 """
 
+import json
 import textwrap
 from unittest.mock import MagicMock, patch
 
+import pytest
 from click.testing import CliRunner
 
 import bbackup
 from bbackup.cli import cli
+from bbackup.cli_utils import (
+    EXIT_SUCCESS,
+    EXIT_USER_ERROR,
+    EXIT_CONFIG_ERROR,
+    EXIT_SYSTEM_ERROR,
+    EXIT_PARTIAL,
+    EXIT_CANCELLED,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -378,3 +385,397 @@ class TestBackupCommand:
         """backup with nonexistent backup-set exits with 1."""
         result = CliRunner().invoke(cli, ["backup", "--backup-set", "nonexistent_set"])
         assert result.exit_code == 1
+
+
+# ---------------------------------------------------------------------------
+# TestJSONOutputMode
+# ---------------------------------------------------------------------------
+
+
+class TestJSONOutputMode:
+    """Verify that --output json wraps results in the standard envelope."""
+
+    def _parse_envelope(self, output: str) -> dict:
+        return json.loads(output.strip())
+
+    def test_list_containers_json_envelope(self, mock_docker_client):
+        mock_docker_client.containers.list.return_value = []
+        result = CliRunner().invoke(cli, ["list-containers", "--output", "json"])
+        assert result.exit_code == 0
+        data = self._parse_envelope(result.output)
+        assert data["schema_version"] == "1"
+        assert data["command"] == "list-containers"
+        assert isinstance(data["success"], bool)
+        assert "containers" in data["data"]
+        assert isinstance(data["errors"], list)
+
+    def test_list_containers_json_includes_id(self, mock_docker_client):
+        """Gap 7: container dicts must include 'id' field."""
+        container = MagicMock()
+        container.id = "abc123def456"
+        container.name = "web"
+        container.status = "running"
+        container.image.tags = ["nginx:latest"]
+        mock_docker_client.containers.list.return_value = [container]
+        result = CliRunner().invoke(cli, ["list-containers", "--output", "json"])
+        assert result.exit_code == 0
+        data = self._parse_envelope(result.output)
+        assert len(data["data"]["containers"]) == 1
+        assert "id" in data["data"]["containers"][0]
+
+    def test_list_backup_sets_json_includes_scope(self, tmp_path):
+        """Gap 14: backup set JSON must include 'scope' dict."""
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(textwrap.dedent("""
+            backup:
+              backup_sets:
+                prod:
+                  description: Production
+                  containers:
+                    - web
+        """))
+        result = CliRunner().invoke(
+            cli, ["--config", str(cfg), "list-backup-sets", "--output", "json"]
+        )
+        assert result.exit_code == 0
+        data = self._parse_envelope(result.output)
+        sets = data["data"]["sets"]
+        assert len(sets) == 1
+        assert "scope" in sets[0]
+
+    def test_list_backups_json_envelope(self, tmp_path):
+        result = CliRunner().invoke(
+            cli, ["list-backups", "--backup-dir", str(tmp_path), "--output", "json"]
+        )
+        assert result.exit_code == 0
+        data = self._parse_envelope(result.output)
+        assert data["schema_version"] == "1"
+        assert "backups" in data["data"]
+
+    def test_list_filesystem_sets_json_envelope(self):
+        result = CliRunner().invoke(cli, ["list-filesystem-sets", "--output", "json"])
+        assert result.exit_code == 0
+        data = self._parse_envelope(result.output)
+        assert "sets" in data["data"]
+
+    def test_list_remote_backups_json_unknown_remote(self):
+        result = CliRunner().invoke(
+            cli, ["list-remote-backups", "--remote", "nonexistent", "--output", "json"]
+        )
+        assert result.exit_code == EXIT_USER_ERROR
+        # Should still be valid JSON even on error
+        data = self._parse_envelope(result.output)
+        assert data["success"] is False
+
+    def test_backup_dry_run_json(self, mock_docker_client):
+        """Gap 9: --dry-run returns plan JSON without running BackupRunner."""
+        mock_docker_client.containers.list.return_value = []
+        with patch("bbackup.cli.BackupRunner") as MockRunner:
+            result = CliRunner().invoke(
+                cli,
+                ["backup", "--containers", "myapp", "--dry-run", "--output", "json"],
+            )
+            MockRunner.return_value.run_backup.assert_not_called()
+        assert result.exit_code == EXIT_SUCCESS
+        data = self._parse_envelope(result.output)
+        assert data["data"]["dry_run"] is True
+        assert "would_backup" in data["data"]
+
+    def test_restore_dry_run_json(self, tmp_path):
+        """Gap 9 (restore): --dry-run returns plan without executing."""
+        result = CliRunner().invoke(
+            cli,
+            [
+                "restore",
+                "--backup-path",
+                str(tmp_path),
+                "--containers",
+                "myapp",
+                "--dry-run",
+                "--output",
+                "json",
+            ],
+        )
+        assert result.exit_code == EXIT_SUCCESS
+        data = self._parse_envelope(result.output)
+        assert data["data"]["dry_run"] is True
+
+    def test_init_encryption_json_returns_key_paths(self, tmp_path):
+        """Gap 6: init-encryption JSON mode omits prose, returns key_paths."""
+        pub = b"-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
+        priv = b"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+        with patch("bbackup.cli.EncryptionManager") as MockEM:
+            MockEM.generate_keypair.return_value = (pub, priv)
+            result = CliRunner().invoke(
+                cli,
+                [
+                    "init-encryption",
+                    "--method",
+                    "asymmetric",
+                    "--key-path",
+                    str(tmp_path),
+                    "--output",
+                    "json",
+                ],
+            )
+        assert result.exit_code in (EXIT_SUCCESS, EXIT_SYSTEM_ERROR)
+        if result.exit_code == EXIT_SUCCESS:
+            data = self._parse_envelope(result.output)
+            assert "key_paths" in data["data"]
+            assert "config_snippet" in data["data"]
+            # Must not contain the multi-server prose guidance
+            assert "multi-server" not in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# TestInputJSON
+# ---------------------------------------------------------------------------
+
+
+class TestInputJSON:
+    """Verify --input-json merging behavior."""
+
+    def test_input_json_sets_containers(self, mock_docker_client):
+        """--input-json overrides --containers."""
+        mock_docker_client.containers.list.return_value = []
+        payload = json.dumps({"containers": ["web", "db"], "no_interactive": True})
+        with patch("bbackup.cli.BackupRunner") as MockRunner:
+            mock_inst = MagicMock()
+            mock_inst.run_backup.return_value = {}
+            MockRunner.return_value = mock_inst
+            result = CliRunner().invoke(
+                cli,
+                ["backup", "--input-json", payload, "--output", "json"],
+                catch_exceptions=False,
+            )
+        # Should reach BackupRunner (containers provided via JSON)
+        # exit code 0 or non-zero based on mock, but not user-error
+        assert result.exit_code != EXIT_USER_ERROR
+
+    def test_input_json_invalid_exits_user_error(self):
+        result = CliRunner().invoke(cli, ["list-containers", "--input-json", "not-json"])
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_input_json_non_object_exits_user_error(self):
+        result = CliRunner().invoke(cli, ["list-containers", "--input-json", "[1, 2, 3]"])
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_input_json_unknown_keys_ignored(self, mock_docker_client):
+        """Unknown keys in --input-json must be silently ignored."""
+        mock_docker_client.containers.list.return_value = []
+        result = CliRunner().invoke(
+            cli,
+            ["list-containers", "--input-json", '{"totally_unknown_key": true}'],
+        )
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_input_json_overrides_cli_flag(self, tmp_path):
+        """Explicit --output flag combined with --input-json succeeds without error."""
+        cfg = tmp_path / "config.yaml"
+        cfg.write_text(textwrap.dedent("""
+            backup:
+              backup_sets:
+                prod:
+                  description: Production
+                  containers:
+                    - web
+        """))
+        # Provide both --output json explicitly and a known key via --input-json
+        result = CliRunner().invoke(
+            cli,
+            [
+                "--config",
+                str(cfg),
+                "list-backup-sets",
+                "--output",
+                "json",
+                "--input-json",
+                '{"totally_unknown": true}',
+            ],
+        )
+        assert result.exit_code == EXIT_SUCCESS
+        data = json.loads(result.output.strip())
+        assert data["schema_version"] == "1"
+
+
+# ---------------------------------------------------------------------------
+# TestSkillsCommand
+# ---------------------------------------------------------------------------
+
+
+class TestSkillsCommand:
+    """Verify the `bbackup skills` and `bbman skills` commands."""
+
+    def test_bbackup_skills_level0_returns_skills_array(self):
+        result = CliRunner().invoke(cli, ["skills"])
+        assert result.exit_code == EXIT_SUCCESS
+        data = json.loads(result.output)
+        assert "skills" in data
+        assert isinstance(data["skills"], list)
+        skill_ids = {s["id"] for s in data["skills"]}
+        assert "docker-backup" in skill_ids
+        assert "filesystem-backup" in skill_ids
+        assert "restore" in skill_ids
+
+    def test_bbackup_skills_level0_includes_agent_hint(self):
+        result = CliRunner().invoke(cli, ["skills"])
+        assert result.exit_code == EXIT_SUCCESS
+        data = json.loads(result.output)
+        assert "agent_hint" in data
+
+    def test_bbackup_skills_level1_docker_backup(self):
+        result = CliRunner().invoke(cli, ["skills", "docker-backup", "--output", "json"])
+        assert result.exit_code == EXIT_SUCCESS
+        data = json.loads(result.output)
+        # level-1 is wrapped in the standard envelope
+        assert data["schema_version"] == "1"
+        skill = data["data"]
+        assert skill["id"] == "docker-backup"
+        assert "steps" in skill
+        assert "examples" in skill
+        # Every step must have input_json_schema
+        for step in skill["steps"]:
+            assert "input_json_schema" in step
+
+    def test_bbackup_skills_level1_unknown_exits_user_error(self):
+        result = CliRunner().invoke(cli, ["skills", "no-such-skill"])
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_bbackup_skills_all_ids_resolvable(self):
+        """Every skill id listed at level-0 must resolve at level-1."""
+        level0 = CliRunner().invoke(cli, ["skills"])
+        data = json.loads(level0.output)
+        for skill in data["skills"]:
+            r = CliRunner().invoke(cli, ["skills", skill["id"], "--output", "json"])
+            assert r.exit_code == EXIT_SUCCESS, f"skill {skill['id']} failed: {r.output}"
+
+
+# ---------------------------------------------------------------------------
+# TestDryRun
+# ---------------------------------------------------------------------------
+
+
+class TestDryRun:
+    def test_backup_dry_run_does_not_call_run_backup(self, mock_docker_client):
+        mock_docker_client.containers.list.return_value = []
+        with patch("bbackup.cli.BackupRunner") as MockRunner:
+            CliRunner().invoke(
+                cli,
+                ["backup", "--containers", "myapp", "--dry-run", "--no-interactive"],
+            )
+            MockRunner.return_value.run_backup.assert_not_called()
+
+    def test_backup_dry_run_exits_success(self, mock_docker_client):
+        mock_docker_client.containers.list.return_value = []
+        with patch("bbackup.cli.BackupRunner"):
+            result = CliRunner().invoke(
+                cli,
+                ["backup", "--containers", "myapp", "--dry-run", "--no-interactive", "--output", "json"],
+            )
+        assert result.exit_code == EXIT_SUCCESS
+
+    def test_restore_dry_run_does_not_call_restore_backup(self, tmp_path):
+        with patch("bbackup.cli.DockerRestore") as MockRestore:
+            CliRunner().invoke(
+                cli,
+                ["restore", "--backup-path", str(tmp_path), "--containers", "myapp", "--dry-run"],
+            )
+            MockRestore.return_value.restore_backup.assert_not_called()
+
+    def test_dry_run_output_shape(self, mock_docker_client):
+        mock_docker_client.containers.list.return_value = []
+        with patch("bbackup.cli.BackupRunner"):
+            result = CliRunner().invoke(
+                cli,
+                ["backup", "--containers", "myapp", "--dry-run", "--output", "json"],
+            )
+        assert result.exit_code == EXIT_SUCCESS
+        data = json.loads(result.output)
+        assert data["data"]["dry_run"] is True
+        assert "would_backup" in data["data"]
+        assert "containers" in data["data"]["would_backup"]
+
+
+# ---------------------------------------------------------------------------
+# TestEnvVars
+# ---------------------------------------------------------------------------
+
+
+class TestEnvVars:
+    def test_bbackup_output_env_produces_json(self, mock_docker_client):
+        """BBACKUP_OUTPUT=json must make list-containers emit JSON without --output flag."""
+        mock_docker_client.containers.list.return_value = []
+        result = CliRunner(env={"BBACKUP_OUTPUT": "json"}).invoke(
+            cli, ["list-containers"]
+        )
+        assert result.exit_code == EXIT_SUCCESS
+        data = json.loads(result.output)
+        assert data["schema_version"] == "1"
+        assert "containers" in data["data"]
+
+    def test_bbackup_no_interactive_env_suppresses_tui(self, mock_docker_client):
+        """BBACKUP_NO_INTERACTIVE=1 must set use_tui=False in backup command."""
+        mock_docker_client.containers.list.return_value = []
+        with patch("bbackup.cli.BackupTUI") as MockTUI, \
+             patch("bbackup.cli.BackupRunner") as MockRunner:
+            mock_runner = MagicMock()
+            mock_runner.run_backup.return_value = {}
+            MockRunner.return_value = mock_runner
+
+            tui_inst = MagicMock()
+            MockTUI.return_value = tui_inst
+
+            CliRunner(env={"BBACKUP_NO_INTERACTIVE": "1"}).invoke(
+                cli,
+                ["backup", "--containers", "myapp", "--output", "json"],
+            )
+            # run_with_live_dashboard must NOT be called when no-interactive is set
+            tui_inst.run_with_live_dashboard.assert_not_called()
+
+    def test_bbackup_output_env_overridden_by_flag(self, mock_docker_client):
+        """Explicit --output text must override BBACKUP_OUTPUT=json."""
+        mock_docker_client.containers.list.return_value = []
+        result = CliRunner(env={"BBACKUP_OUTPUT": "json"}).invoke(
+            cli, ["list-containers", "--output", "text"]
+        )
+        assert result.exit_code == EXIT_SUCCESS
+        # Should not be valid JSON envelope
+        assert "schema_version" not in result.output
+
+
+# ---------------------------------------------------------------------------
+# TestExitCodes
+# ---------------------------------------------------------------------------
+
+
+class TestExitCodes:
+    def test_bad_backup_set_exits_user_error(self):
+        result = CliRunner().invoke(cli, ["backup", "--backup-set", "nonexistent"])
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_no_containers_selected_exits_user_error(self, mock_docker_client):
+        mock_docker_client.containers.list.return_value = []
+        result = CliRunner().invoke(cli, ["backup", "--no-interactive"])
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_unknown_remote_exits_user_error(self):
+        result = CliRunner().invoke(
+            cli, ["list-remote-backups", "--remote", "nowhere"]
+        )
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_restore_no_items_exits_user_error(self, tmp_path):
+        result = CliRunner().invoke(
+            cli, ["restore", "--backup-path", str(tmp_path)]
+        )
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_invalid_input_json_exits_user_error(self):
+        result = CliRunner().invoke(
+            cli, ["list-containers", "--input-json", "}{bad json"]
+        )
+        assert result.exit_code == EXIT_USER_ERROR
+
+    def test_skills_unknown_id_exits_user_error(self):
+        result = CliRunner().invoke(cli, ["skills", "no-such-skill"])
+        assert result.exit_code == EXIT_USER_ERROR

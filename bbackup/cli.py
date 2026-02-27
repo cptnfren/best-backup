@@ -1,12 +1,19 @@
 """
-Main CLI entry point for bbackup.
+bbackup/cli.py
+Purpose: Main CLI entry point for bbackup. Provides all backup/restore subcommands
+         with AI-agent-friendly JSON I/O via --output json, --input-json, --dry-run,
+         and the `skills` subcommand for progressive capability discovery.
+Created: 2025-01-01
+Last Updated: 2026-02-27
 """
 
-import sys
+import json
 import os
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List
+
 import click
 from rich.console import Console
 from rich.table import Table
@@ -20,6 +27,22 @@ from .backup_runner import BackupRunner
 from .restore import DockerRestore
 from .logging import setup_logging
 from .encryption import EncryptionManager
+from .cli_utils import (
+    output_option,
+    input_json_option,
+    dry_run_option,
+    merge_json_input,
+    render_output,
+    json_error,
+    EXIT_SUCCESS,
+    EXIT_USER_ERROR,
+    EXIT_CONFIG_ERROR,
+    EXIT_SYSTEM_ERROR,
+    EXIT_PARTIAL,
+    EXIT_CANCELLED,
+    BBACKUP_NO_INTERACTIVE_ENV,
+)
+from .skills import get_skill
 
 
 @click.group()
@@ -32,83 +55,40 @@ from .encryption import EncryptionManager
 )
 @click.pass_context
 def cli(ctx, config):
-    """bbackup - Docker Backup Tool with Rich TUI"""
+    """bbackup - Docker and filesystem backup tool with Rich TUI."""
     ctx.ensure_object(dict)
     ctx.obj["config"] = Config(config_path=config)
     ctx.obj["console"] = Console()
-    # Setup logging
     setup_logging(ctx.obj["config"])
 
 
+# ---------------------------------------------------------------------------
+# backup
+# ---------------------------------------------------------------------------
+
 @cli.command()
-@click.option(
-    "--containers",
-    "-C",
-    multiple=True,
-    help="Container names to backup (can specify multiple)",
-)
-@click.option(
-    "--backup-set",
-    "-s",
-    help="Use predefined backup set from config",
-)
-@click.option(
-    "--config-only",
-    is_flag=True,
-    help="Backup only configurations (no volumes)",
-)
-@click.option(
-    "--volumes-only",
-    is_flag=True,
-    help="Backup only volumes (no configs)",
-)
-@click.option(
-    "--no-networks",
-    is_flag=True,
-    help="Skip network backups",
-)
-@click.option(
-    "--incremental",
-    "-i",
-    is_flag=True,
-    help="Use incremental backup (rsync link-dest)",
-)
-@click.option(
-    "--interactive",
-    "-I",
-    is_flag=True,
-    default=True,
-    help="Use interactive TUI (default: True)",
-)
+@click.option("--containers", "-C", multiple=True, help="Container names to backup (repeatable)")
+@click.option("--backup-set", "-s", help="Use predefined backup set from config")
+@click.option("--config-only", is_flag=True, help="Backup only configurations (no volumes)")
+@click.option("--volumes-only", is_flag=True, help="Backup only volumes (no configs)")
+@click.option("--no-networks", is_flag=True, help="Skip network backups")
+@click.option("--incremental", "-i", is_flag=True, help="Use incremental backup (rsync link-dest)")
 @click.option(
     "--no-interactive",
     is_flag=True,
-    help="Disable interactive mode (use config/CLI only)",
+    default=False,
+    help=(
+        "Disable TUI and interactive prompts. "
+        "Set BBACKUP_NO_INTERACTIVE=1 to apply globally."
+    ),
 )
-@click.option(
-    "--remote",
-    "-r",
-    multiple=True,
-    help="Remote storage destinations (can specify multiple)",
-)
-@click.option(
-    "--paths",
-    "-p",
-    multiple=True,
-    metavar="PATH",
-    help="Filesystem paths to back up (can specify multiple)",
-)
-@click.option(
-    "--exclude",
-    multiple=True,
-    metavar="PATTERN",
-    help="Exclude patterns for filesystem backup (gitignore-style, can specify multiple)",
-)
-@click.option(
-    "--filesystem-set",
-    default=None,
-    help="Named filesystem backup set from config",
-)
+@click.option("--remote", "-r", multiple=True, help="Remote storage destinations (repeatable)")
+@click.option("--paths", "-p", multiple=True, metavar="PATH", help="Filesystem paths to back up (repeatable)")
+@click.option("--exclude", multiple=True, metavar="PATTERN", help="Exclude patterns for filesystem backup (repeatable)")
+@click.option("--filesystem-set", default=None, help="Named filesystem backup set from config")
+@output_option
+@input_json_option
+@dry_run_option
 @click.pass_context
 def backup(
     ctx,
@@ -118,21 +98,39 @@ def backup(
     volumes_only,
     no_networks,
     incremental,
-    interactive,
     no_interactive,
     remote,
     paths,
     exclude,
     filesystem_set,
+    output,
+    input_json,
+    dry_run,
 ):
-    """Create Docker backup"""
+    """Create Docker and/or filesystem backup."""
+    merge_json_input(ctx, input_json)
+    # Re-read possibly overridden values from ctx.params
+    containers = ctx.params.get("containers", containers)
+    backup_set = ctx.params.get("backup_set", backup_set)
+    config_only = ctx.params.get("config_only", config_only)
+    volumes_only = ctx.params.get("volumes_only", volumes_only)
+    no_networks = ctx.params.get("no_networks", no_networks)
+    incremental = ctx.params.get("incremental", incremental)
+    no_interactive = ctx.params.get("no_interactive", no_interactive)
+    remote = ctx.params.get("remote", remote)
+    paths = ctx.params.get("paths", paths)
+    exclude = ctx.params.get("exclude", exclude)
+    filesystem_set = ctx.params.get("filesystem_set", filesystem_set)
+    dry_run = ctx.params.get("dry_run", dry_run)
+
     config: Config = ctx.obj["config"]
     console: Console = ctx.obj["console"]
-    tui = BackupTUI(config)
-    
-    # Show header
-    tui.show_header()
-    
+
+    # Gap 1: honour env var for non-interactive mode
+    _no_interactive = no_interactive or os.environ.get(BBACKUP_NO_INTERACTIVE_ENV) == "1"
+    # When --output json is active, TUI must be off
+    use_tui = not _no_interactive and output != "json"
+
     # Determine backup scope
     scope = BackupScope()
     if config_only:
@@ -142,73 +140,67 @@ def backup(
         scope.containers = False
         scope.configs = False
         scope.networks = False
-    
     if no_networks:
         scope.networks = False
-    
-    # Determine containers to backup
+
+    # Resolve containers list
     containers_to_backup: Optional[List[str]] = None
-    
+
     if backup_set:
-        # Use backup set from config
         backup_set_obj = config.get_backup_set(backup_set)
         if backup_set_obj:
             containers_to_backup = backup_set_obj.containers
             scope = backup_set_obj.scope
-            console.print(f"[green]Using backup set: {backup_set}[/green]")
+            if output != "json":
+                console.print(f"[green]Using backup set: {backup_set}[/green]")
         else:
-            console.print(f"[red]Backup set '{backup_set}' not found in config[/red]")
-            sys.exit(1)
+            msg = f"Backup set '{backup_set}' not found in config"
+            if output != "json":
+                sys.stderr.write(f"Error: {msg}\n")
+            json_error("backup", msg, EXIT_USER_ERROR, output)
     elif containers:
-        # Use CLI-specified containers
         containers_to_backup = list(containers)
-    elif interactive and not no_interactive:
-        # Interactive selection
+    elif use_tui:
+        tui = BackupTUI(config)
+        tui.show_header()
         docker_backup = DockerBackup(config)
         all_containers = docker_backup.get_all_containers()
         selected = tui.select_containers(all_containers)
         containers_to_backup = list(selected)
-        
-        # Also allow scope selection
         scope_dict = tui.select_scope()
         scope.containers = scope_dict.get("containers", True)
         scope.volumes = scope_dict.get("volumes", True)
         scope.networks = scope_dict.get("networks", True)
         scope.configs = scope_dict.get("configs", True)
-    
+
     if not containers_to_backup:
-        console.print("[red]No containers selected for backup[/red]")
-        sys.exit(1)
-    
-    # Determine remotes
+        msg = "No containers selected for backup"
+        if output != "json":
+            sys.stderr.write(f"Error: {msg}\n")
+        json_error("backup", msg, EXIT_USER_ERROR, output)
+
+    # Resolve remotes
     remotes_to_use = []
     if remote:
-        # Use CLI-specified remotes
         for r_name in remote:
             if r_name in config.remotes:
                 remotes_to_use.append(config.remotes[r_name])
-            else:
-                console.print(f"[yellow]Warning: Remote '{r_name}' not found in config[/yellow]")
+            elif output != "json":
+                sys.stderr.write(f"Warning: Remote '{r_name}' not found in config\n")
     else:
-        # Use all enabled remotes from config
         remotes_to_use = config.get_enabled_remotes()
-    
-    if not remotes_to_use:
+
+    if not remotes_to_use and output != "json":
         console.print("[yellow]Warning: No remote storage destinations configured[/yellow]")
         console.print("[dim]Backup will be created locally only[/dim]")
-    
-    # Create backup with live dashboard
-    staging_dir = Path(config.get_staging_dir())
-    backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_name = f"backup_{backup_timestamp}"
-    backup_dir = staging_dir / backup_name
-    
+
     # Resolve filesystem targets
     filesystem_targets = []
     if filesystem_set and filesystem_set in config.filesystem_sets:
         fs_set_obj = config.filesystem_sets[filesystem_set]
         filesystem_targets = [t for t in fs_set_obj.targets if t.enabled]
-        console.print(f"[green]Using filesystem set: {filesystem_set}[/green]")
+        if output != "json":
+            console.print(f"[green]Using filesystem set: {filesystem_set}[/green]")
     elif paths:
         filesystem_targets = [
             FilesystemTarget(name=Path(p).name, path=p, excludes=list(exclude))
@@ -218,196 +210,142 @@ def backup(
         for fs_set_obj in config.filesystem_sets.values():
             filesystem_targets.extend(t for t in fs_set_obj.targets if t.enabled)
 
-    # Initialize status and runner
+    # Gap 9: dry-run support
+    if dry_run:
+        plan = {
+            "dry_run": True,
+            "would_backup": {
+                "containers": list(containers_to_backup or []),
+                "filesystem_targets": [
+                    {"name": t.name, "path": t.path, "excludes": t.excludes}
+                    for t in filesystem_targets
+                ],
+                "remotes": [r.name for r in remotes_to_use if hasattr(r, "name")],
+                "incremental": incremental or config.incremental.enabled,
+                "scope": {
+                    "volumes": scope.volumes,
+                    "configs": scope.configs,
+                    "networks": scope.networks,
+                },
+            },
+        }
+        render_output(plan, output, "backup", success=True)
+        if output != "json":
+            console.print("[cyan]Dry-run: no backup created.[/cyan]")
+        sys.exit(EXIT_SUCCESS)
+
+    # Build staging dir
+    staging_dir = Path(config.get_staging_dir())
+    backup_timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_name = f"backup_{backup_timestamp}"
+    backup_dir = staging_dir / backup_name
+
     status = BackupStatus()
-    tui.status = status
     runner = BackupRunner(config, status)
 
-    # Define backup operation
+    # Gap 8: capture run_backup result
+    run_results = {}
+
     def backup_operation():
-        nonlocal backup_dir, backup_name  # Allow modification of outer scope variables
+        nonlocal backup_dir, backup_name, run_results
         try:
             status.status = "running"
-            runner.run_backup(
+            run_results = runner.run_backup(
                 backup_dir=backup_dir,
                 containers=containers_to_backup,
                 scope=scope,
                 incremental=incremental or config.incremental.enabled,
                 filesystem_targets=filesystem_targets,
-            )
-            
-            # Encrypt backup if enabled
+            ) or {}
+
             if config.encryption.enabled and status.status != "cancelled":
                 original_backup_dir = backup_dir
                 encrypted_backup_dir = runner.encrypt_backup_directory(backup_dir)
-                # Use encrypted directory for upload if encryption succeeded
                 if encrypted_backup_dir != original_backup_dir:
                     backup_dir = encrypted_backup_dir
-                    # Update backup_name if directory name changed
                     backup_name = encrypted_backup_dir.name
-            
-            # Upload to remotes
+
             if remotes_to_use and status.status != "cancelled":
                 runner.upload_to_remotes(backup_dir, backup_name, remotes_to_use)
-            
+
             if status.status != "cancelled":
                 status.status = "completed"
         except Exception as e:
             status.status = "error"
             status.add_error(str(e))
-    
-    # Run with live dashboard
+
     try:
-        tui.run_with_live_dashboard(backup_operation)
+        if use_tui:
+            tui = BackupTUI(config)
+            tui.status = status
+            tui.run_with_live_dashboard(backup_operation)
+        else:
+            backup_operation()
     except KeyboardInterrupt:
         status.cancel()
-        console.print("\n[yellow]Backup cancelled by user[/yellow]")
-        sys.exit(1)
-    
-    # Show final results
+        if output != "json":
+            console.print("\n[yellow]Backup cancelled by user[/yellow]")
+        sys.exit(EXIT_CANCELLED)
+
+    # Build JSON-friendly results dict
+    backup_result = {
+        "backup_dir": str(backup_dir),
+        "containers": status.containers_status or {},
+        "volumes": status.volumes_status or {},
+        "networks": status.networks_status or {},
+        "filesystems": status.filesystems_status or {},
+        "remotes": {r.name: "uploaded" for r in remotes_to_use if hasattr(r, "name")},
+        "encryption": "encrypted" if config.encryption.enabled else "disabled",
+        "errors": status.errors or [],
+    }
+
     if status.status == "completed":
-        console.print(f"\n[green]✓ Backup completed: {backup_dir}[/green]")
-        tui.show_backup_status(
-            {
-                "containers": status.containers_status,
-                "volumes": status.volumes_status,
-                "networks": status.networks_status,
-                "filesystems": status.filesystems_status,
-            },
-            status.errors,
-        )
+        render_output(backup_result, output, "backup", success=True)
+        if output != "json":
+            console.print(f"\n[green]Backup completed: {backup_dir}[/green]")
+            tui_inst = BackupTUI(config)
+            tui_inst.show_backup_status(
+                {
+                    "containers": status.containers_status,
+                    "volumes": status.volumes_status,
+                    "networks": status.networks_status,
+                    "filesystems": status.filesystems_status,
+                },
+                status.errors,
+            )
+        sys.exit(EXIT_SUCCESS)
     elif status.status == "cancelled":
-        console.print("\n[yellow]Backup was cancelled[/yellow]")
-        sys.exit(1)
+        render_output(backup_result, output, "backup", success=False, errors=["Backup cancelled"])
+        if output != "json":
+            console.print("\n[yellow]Backup was cancelled[/yellow]")
+        sys.exit(EXIT_CANCELLED)
     else:
-        console.print("\n[red]Backup failed or was interrupted[/red]")
-        if status.errors:
-            for error in status.errors:
-                console.print(f"  [red]•[/red] {error}")
-        sys.exit(1)
+        render_output(backup_result, output, "backup", success=False, errors=status.errors or ["Backup failed"])
+        if output != "json":
+            console.print("\n[red]Backup failed or was interrupted[/red]")
+            for err in status.errors or []:
+                console.print(f"  [red]x[/red] {err}")
+        sys.exit(EXIT_PARTIAL if run_results else EXIT_SYSTEM_ERROR)
 
 
-@cli.command()
-@click.pass_context
-def list_containers(ctx):
-    """List all Docker containers"""
-    config: Config = ctx.obj["config"]
-    console: Console = ctx.obj["console"]
-    tui = BackupTUI(config)
-    
-    tui.show_header("Container List")
-    
-    docker_backup = DockerBackup(config)
-    containers = docker_backup.get_all_containers()
-    
-    # Create table
-    from rich.table import Table
-    from rich import box
-    table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
-    table.add_column("Status", width=12)
-    table.add_column("Name", style="cyan", width=30)
-    table.add_column("Image", style="dim", width=40)
-    
-    for container in containers:
-        status_color = "green" if container["status"] == "running" else "yellow"
-        table.add_row(
-            f"[{status_color}]{container['status']}[/{status_color}]",
-            container["name"],
-            container["image"][:40],
-        )
-    
-    console.print(table)
-
+# ---------------------------------------------------------------------------
+# restore
+# ---------------------------------------------------------------------------
 
 @cli.command()
-@click.pass_context
-def list_backup_sets(ctx):
-    """List available backup sets"""
-    config: Config = ctx.obj["config"]
-    console: Console = ctx.obj["console"]
-    tui = BackupTUI(config)
-    
-    tui.show_header("Backup Sets")
-    
-    if not config.backup_sets:
-        console.print("[yellow]No backup sets configured[/yellow]")
-        return
-    
-    for name, backup_set in config.backup_sets.items():
-        console.print(f"\n[bold cyan]{name}[/bold cyan]")
-        console.print(f"  Description: {backup_set.description}")
-        console.print(f"  Containers: {', '.join(backup_set.containers)}")
-
-
-@cli.command()
-@click.pass_context
-def init_config(ctx):
-    """Initialize configuration file"""
-    config_path = os.path.expanduser("~/.config/bbackup/config.yaml")
-    config_dir = os.path.dirname(config_path)
-    
-    os.makedirs(config_dir, exist_ok=True)
-    
-    # Copy example config
-    example_config = Path(__file__).parent.parent / "config.yaml.example"
-    if example_config.exists():
-        import shutil
-        shutil.copy(example_config, config_path)
-        console: Console = ctx.obj["console"]
-        console.print(f"[green]Configuration file created: {config_path}[/green]")
-        console.print("[dim]Please edit the file to configure your backup settings.[/dim]")
-    else:
-        console.print("[red]Example config not found[/red]")
-
-
-@cli.command()
-@click.option(
-    "--backup-path",
-    "-p",
-    type=click.Path(exists=True, path_type=Path),
-    required=True,
-    help="Path to backup directory",
-)
-@click.option(
-    "--containers",
-    "-C",
-    multiple=True,
-    help="Container names to restore (can specify multiple)",
-)
-@click.option(
-    "--volumes",
-    "-V",
-    multiple=True,
-    help="Volume names to restore (can specify multiple)",
-)
-@click.option(
-    "--networks",
-    "-N",
-    multiple=True,
-    help="Network names to restore (can specify multiple)",
-)
-@click.option(
-    "--rename",
-    "-r",
-    multiple=True,
-    help="Rename mapping (format: old_name:new_name, can specify multiple)",
-)
-@click.option(
-    "--all",
-    is_flag=True,
-    help="Restore all containers, volumes, and networks from backup",
-)
-@click.option(
-    "--filesystem",
-    multiple=True,
-    help="Filesystem target names to restore (can specify multiple)",
-)
-@click.option(
-    "--filesystem-destination",
-    type=click.Path(),
-    default=None,
-    help="Destination path for filesystem restore",
-)
+@click.option("--backup-path", "-p", type=click.Path(exists=True, path_type=Path), required=True,
+              help="Path to backup directory")
+@click.option("--containers", "-C", multiple=True, help="Container names to restore (repeatable)")
+@click.option("--volumes", "-V", multiple=True, help="Volume names to restore (repeatable)")
+@click.option("--networks", "-N", multiple=True, help="Network names to restore (repeatable)")
+@click.option("--rename", "-r", multiple=True, help="Rename mapping old_name:new_name (repeatable)")
+@click.option("--all", "restore_all", is_flag=True, help="Restore everything from backup")
+@click.option("--filesystem", multiple=True, help="Filesystem target names to restore (repeatable)")
+@click.option("--filesystem-destination", type=click.Path(), default=None,
+              help="Destination path for filesystem restore")
+@output_option
+@input_json_option
+@dry_run_option
 @click.pass_context
 def restore(
     ctx,
@@ -416,40 +354,40 @@ def restore(
     volumes,
     networks,
     rename,
-    all,
+    restore_all,
     filesystem,
     filesystem_destination,
+    output,
+    input_json,
+    dry_run,
 ):
-    """Restore Docker backup"""
+    """Restore Docker or filesystem backup."""
+    merge_json_input(ctx, input_json)
+
     config: Config = ctx.obj["config"]
     console: Console = ctx.obj["console"]
-    
+
     backup_path = Path(backup_path)
     if not backup_path.exists():
-        console.print(f"[red]Backup path does not exist: {backup_path}[/red]")
-        sys.exit(1)
-    
+        json_error("restore", f"Backup path does not exist: {backup_path}", EXIT_USER_ERROR, output)
+
     restore_mgr = DockerRestore(config)
-    
-    # Parse rename mappings
+
     rename_map = {}
     if rename:
         for mapping in rename:
             if ":" in mapping:
                 old_name, new_name = mapping.split(":", 1)
                 rename_map[old_name.strip()] = new_name.strip()
-    
-    # Determine what to restore
+
     containers_to_restore = None
     volumes_to_restore = None
     networks_to_restore = None
-    
-    if all:
-        # Restore everything from backup
+
+    if restore_all:
         configs_dir = backup_path / "configs"
         volumes_dir = backup_path / "volumes"
         networks_dir = backup_path / "networks"
-        
         if configs_dir.exists():
             containers_to_restore = [f.stem.replace("_config", "") for f in configs_dir.glob("*_config.json")]
         if volumes_dir.exists():
@@ -463,18 +401,38 @@ def restore(
             volumes_to_restore = list(volumes)
         if networks:
             networks_to_restore = list(networks)
-    
+
     filesystems_to_restore = list(filesystem) if filesystem else None
     fs_destination = Path(filesystem_destination) if filesystem_destination else None
 
     if not containers_to_restore and not volumes_to_restore and not networks_to_restore and not filesystems_to_restore:
-        console.print("[red]No containers, volumes, networks, or filesystem paths specified to restore[/red]")
-        console.print("[dim]Use --all to restore everything, or specify --containers, --volumes, --networks, or --filesystem[/dim]")
-        sys.exit(1)
-    
-    console.print(f"[bold]Restoring from backup: {backup_path}[/bold]\n")
-    
-    # Perform restore
+        json_error(
+            "restore",
+            "No items specified. Use --all or specify --containers / --volumes / --networks / --filesystem",
+            EXIT_USER_ERROR,
+            output,
+        )
+
+    # Gap 9: dry-run
+    if dry_run:
+        plan = {
+            "dry_run": True,
+            "backup_path": str(backup_path),
+            "would_restore": {
+                "containers": containers_to_restore or [],
+                "volumes": volumes_to_restore or [],
+                "networks": networks_to_restore or [],
+                "filesystems": filesystems_to_restore or [],
+            },
+        }
+        render_output(plan, output, "restore", success=True)
+        if output != "json":
+            console.print("[cyan]Dry-run: no restore executed.[/cyan]")
+        sys.exit(EXIT_SUCCESS)
+
+    if output != "json":
+        console.print(f"[bold]Restoring from backup: {backup_path}[/bold]\n")
+
     results = restore_mgr.restore_backup(
         backup_path=backup_path,
         containers=containers_to_restore,
@@ -484,288 +442,427 @@ def restore(
         filesystem_destination=fs_destination,
         rename_map=rename_map,
     )
-    
-    # Show results
-    console.print("\n[bold]Restore Results:[/bold]\n")
-    
-    table = Table(show_header=True, header_style="bold green", box=box.ROUNDED)
-    table.add_column("Type", style="cyan", width=15)
-    table.add_column("Success", style="green", width=10)
-    table.add_column("Failed", style="red", width=10)
-    
-    containers_success = sum(1 for v in results.get("containers", {}).values() if v == "success")
-    containers_failed = sum(1 for v in results.get("containers", {}).values() if v == "failed")
-    volumes_success = sum(1 for v in results.get("volumes", {}).values() if v == "success")
-    volumes_failed = sum(1 for v in results.get("volumes", {}).values() if v == "failed")
-    networks_success = sum(1 for v in results.get("networks", {}).values() if v == "success")
-    networks_failed = sum(1 for v in results.get("networks", {}).values() if v == "failed")
-    
-    fs_restore_success = sum(1 for v in results.get("filesystems", {}).values() if v == "success")
-    fs_restore_failed = sum(1 for v in results.get("filesystems", {}).values() if v == "failed")
 
-    if containers_to_restore:
-        table.add_row("Containers", str(containers_success), str(containers_failed))
-    if volumes_to_restore:
-        table.add_row("Volumes", str(volumes_success), str(volumes_failed))
-    if networks_to_restore:
-        table.add_row("Networks", str(networks_success), str(networks_failed))
-    if filesystems_to_restore:
-        table.add_row("Filesystems", str(fs_restore_success), str(fs_restore_failed))
-    
-    console.print(table)
-    
-    # Errors
-    if results.get("errors"):
-        console.print("\n[bold red]Errors:[/bold red]")
-        for error in results["errors"]:
-            console.print(f"  [red]•[/red] {error}")
-    
-    if results.get("errors") and len(results["errors"]) > 0:
-        sys.exit(1)
-    else:
-        console.print("\n[green]✓ Restore completed successfully[/green]")
+    errors = results.get("errors", [])
+    success = len(errors) == 0
+    render_output(results, output, "restore", success=success, errors=errors)
+
+    if output != "json":
+        console.print("\n[bold]Restore Results:[/bold]\n")
+        table = Table(show_header=True, header_style="bold green", box=box.ROUNDED)
+        table.add_column("Type", style="cyan", width=15)
+        table.add_column("Success", style="green", width=10)
+        table.add_column("Failed", style="red", width=10)
+
+        for res_type in ("containers", "volumes", "networks", "filesystems"):
+            type_res = results.get(res_type, {})
+            if type_res:
+                ok = sum(1 for v in type_res.values() if v == "success")
+                fail = sum(1 for v in type_res.values() if v == "failed")
+                table.add_row(res_type.capitalize(), str(ok), str(fail))
+        console.print(table)
+
+        if errors:
+            console.print("\n[bold red]Errors:[/bold red]")
+            for error in errors:
+                console.print(f"  [red]x[/red] {error}")
+            sys.exit(EXIT_PARTIAL)
+        else:
+            console.print("\n[green]Restore completed successfully[/green]")
+
+    sys.exit(EXIT_PARTIAL if errors else EXIT_SUCCESS)
 
 
-@cli.command()
-@click.option(
-    "--backup-dir",
-    "-d",
-    type=click.Path(exists=True, path_type=Path),
-    help="Backup directory to list (default: staging directory)",
-)
+# ---------------------------------------------------------------------------
+# list-containers
+# ---------------------------------------------------------------------------
+
+@cli.command("list-containers")
+@output_option
+@input_json_option
 @click.pass_context
-def list_backups(ctx, backup_dir):
-    """List available backups"""
+def list_containers(ctx, output, input_json):
+    """List all Docker containers."""
+    merge_json_input(ctx, input_json)
+
     config: Config = ctx.obj["config"]
     console: Console = ctx.obj["console"]
-    
-    if backup_dir:
-        backup_path = Path(backup_dir)
-    else:
-        backup_path = Path(config.get_staging_dir())
-    
+
+    docker_backup = DockerBackup(config)
+    containers = docker_backup.get_all_containers()
+
+    # Gap 7: include container id in JSON output
+    containers_data = [
+        {
+            "id": c.get("id", ""),
+            "name": c["name"],
+            "status": c["status"],
+            "image": c["image"],
+        }
+        for c in containers
+    ]
+
+    render_output({"containers": containers_data}, output, "list-containers")
+
+    if output != "json":
+        tui = BackupTUI(config)
+        tui.show_header("Container List")
+        table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+        table.add_column("Status", width=12)
+        table.add_column("Name", style="cyan", width=30)
+        table.add_column("Image", style="dim", width=40)
+        for c in containers:
+            status_color = "green" if c["status"] == "running" else "yellow"
+            table.add_row(
+                f"[{status_color}]{c['status']}[/{status_color}]",
+                c["name"],
+                c["image"][:40],
+            )
+        console.print(table)
+
+
+# ---------------------------------------------------------------------------
+# list-backup-sets
+# ---------------------------------------------------------------------------
+
+@cli.command("list-backup-sets")
+@output_option
+@input_json_option
+@click.pass_context
+def list_backup_sets(ctx, output, input_json):
+    """List available backup sets."""
+    merge_json_input(ctx, input_json)
+
+    config: Config = ctx.obj["config"]
+    console: Console = ctx.obj["console"]
+
+    # Gap 14: include full scope in JSON output
+    sets_data = []
+    for name, bs in config.backup_sets.items():
+        sets_data.append({
+            "name": name,
+            "description": getattr(bs, "description", ""),
+            "containers": bs.containers,
+            "scope": {
+                "volumes": bs.scope.volumes,
+                "configs": bs.scope.configs,
+                "networks": bs.scope.networks,
+                "filesystems": getattr(bs.scope, "filesystems", False),
+            },
+        })
+
+    render_output({"sets": sets_data}, output, "list-backup-sets")
+
+    if output != "json":
+        tui = BackupTUI(config)
+        tui.show_header("Backup Sets")
+        if not config.backup_sets:
+            console.print("[yellow]No backup sets configured[/yellow]")
+            return
+        for name, bs in config.backup_sets.items():
+            console.print(f"\n[bold cyan]{name}[/bold cyan]")
+            console.print(f"  Description: {getattr(bs, 'description', '')}")
+            console.print(f"  Containers: {', '.join(bs.containers)}")
+
+
+# ---------------------------------------------------------------------------
+# list-backups
+# ---------------------------------------------------------------------------
+
+@cli.command("list-backups")
+@click.option("--backup-dir", "-d", type=click.Path(exists=True, path_type=Path),
+              help="Backup directory to list (default: staging directory)")
+@output_option
+@input_json_option
+@click.pass_context
+def list_backups(ctx, backup_dir, output, input_json):
+    """List available local backups."""
+    merge_json_input(ctx, input_json)
+
+    config: Config = ctx.obj["config"]
+    console: Console = ctx.obj["console"]
+
+    backup_path = Path(backup_dir) if backup_dir else Path(config.get_staging_dir())
     restore_mgr = DockerRestore(config)
     backups = restore_mgr.list_backups(backup_path)
-    
-    if not backups:
-        console.print(f"[yellow]No backups found in {backup_path}[/yellow]")
-        return
-    
-    console.print(f"\n[bold]Available Backups in {backup_path}:[/bold]\n")
-    
-    table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
-    table.add_column("Backup Name", style="cyan", width=30)
-    table.add_column("Timestamp", style="dim", width=25)
-    table.add_column("Path", style="dim", width=40)
-    
-    for backup in backups:
-        table.add_row(
-            backup["name"],
-            backup["timestamp"],
-            str(backup["path"]),
-        )
-    
-    console.print(table)
+
+    backups_data = [
+        {
+            "name": b["name"],
+            "timestamp": b.get("timestamp", ""),
+            "path": str(b["path"]),
+            "size_bytes": b.get("size_bytes", 0),
+        }
+        for b in backups
+    ]
+
+    render_output({"backups": backups_data}, output, "list-backups")
+
+    if output != "json":
+        if not backups:
+            console.print(f"[yellow]No backups found in {backup_path}[/yellow]")
+            return
+        console.print(f"\n[bold]Available Backups in {backup_path}:[/bold]\n")
+        table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+        table.add_column("Backup Name", style="cyan", width=30)
+        table.add_column("Timestamp", style="dim", width=25)
+        table.add_column("Path", style="dim", width=40)
+        for b in backups:
+            table.add_row(b["name"], b.get("timestamp", ""), str(b["path"]))
+        console.print(table)
 
 
-@cli.command()
-@click.option(
-    "--remote",
-    "-r",
-    required=True,
-    help="Remote storage name to list backups from",
-)
+# ---------------------------------------------------------------------------
+# list-remote-backups
+# ---------------------------------------------------------------------------
+
+@cli.command("list-remote-backups")
+@click.option("--remote", "-r", required=True, help="Remote storage name to list backups from")
+@output_option
+@input_json_option
 @click.pass_context
-def list_remote_backups(ctx, remote):
-    """List available backups on remote storage"""
+def list_remote_backups(ctx, remote, output, input_json):
+    """List available backups on remote storage."""
+    merge_json_input(ctx, input_json)
+
     config: Config = ctx.obj["config"]
     console: Console = ctx.obj["console"]
-    
+
     if remote not in config.remotes:
-        console.print(f"[red]Remote '{remote}' not found in configuration[/red]")
-        sys.exit(1)
-    
+        json_error("list-remote-backups", f"Remote '{remote}' not found in configuration", EXIT_USER_ERROR, output)
+
     remote_storage = config.remotes[remote]
     if not remote_storage.enabled:
-        console.print(f"[yellow]Remote '{remote}' is not enabled[/yellow]")
-        sys.exit(1)
-    
+        json_error("list-remote-backups", f"Remote '{remote}' is not enabled", EXIT_USER_ERROR, output)
+
     remote_mgr = RemoteStorageManager(config)
     backups = remote_mgr.list_backups(remote_storage)
-    
-    if not backups:
-        console.print(f"[yellow]No backups found on remote '{remote}'[/yellow]")
-        return
-    
-    console.print(f"\n[bold]Available Backups on Remote '{remote}':[/bold]\n")
-    
-    table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
-    table.add_column("Backup Name", style="cyan", width=40)
-    table.add_column("Remote Path", style="dim", width=50)
-    
-    for backup_name in backups:
-        table.add_row(
-            backup_name,
-            f"{remote_storage.path}/{backup_name}",
-        )
-    
-    console.print(table)
+
+    backups_data = [
+        {"name": b, "remote_path": f"{remote_storage.path}/{b}"}
+        for b in backups
+    ]
+
+    render_output({"remote": remote, "backups": backups_data}, output, "list-remote-backups")
+
+    if output != "json":
+        if not backups:
+            console.print(f"[yellow]No backups found on remote '{remote}'[/yellow]")
+            return
+        console.print(f"\n[bold]Available Backups on Remote '{remote}':[/bold]\n")
+        table = Table(show_header=True, header_style="bold magenta", box=box.ROUNDED)
+        table.add_column("Backup Name", style="cyan", width=40)
+        table.add_column("Remote Path", style="dim", width=50)
+        for b in backups:
+            table.add_row(b, f"{remote_storage.path}/{b}")
+        console.print(table)
 
 
-@cli.command()
-@click.option(
-    '--method',
-    type=click.Choice(['symmetric', 'asymmetric', 'both']),
-    default='symmetric',
-    help='Encryption method to use'
-)
-@click.option(
-    '--key-path',
-    type=click.Path(),
-    help='Directory to save key(s) (default: ~/.config/bbackup/)'
-)
-@click.option(
-    '--password',
-    help='Password for key encryption (optional)'
-)
-@click.option(
-    '--algorithm',
-    type=click.Choice(['rsa-4096', 'ecdsa-p384']),
-    default='rsa-4096',
-    help='Algorithm for asymmetric keys (default: rsa-4096)'
-)
-@click.option(
-    '--upload-github',
-    is_flag=True,
-    help='Upload public key to GitHub and display URL (requires GitHub CLI or manual upload)'
-)
+# ---------------------------------------------------------------------------
+# list-filesystem-sets
+# ---------------------------------------------------------------------------
+
+@cli.command("list-filesystem-sets")
+@output_option
+@input_json_option
 @click.pass_context
-def init_encryption(ctx, method, key_path, password, algorithm, upload_github):
-    """Initialize encryption keys for backup system."""
+def list_filesystem_sets(ctx, output, input_json):
+    """List configured filesystem backup sets."""
+    merge_json_input(ctx, input_json)
+
+    config: Config = ctx.obj["config"]
     console: Console = ctx.obj["console"]
-    
-    # Determine key directory
-    if key_path:
-        key_dir = Path(key_path).expanduser()
+
+    sets_data = []
+    for name, fs_set in config.filesystem_sets.items():
+        sets_data.append({
+            "name": name,
+            "description": getattr(fs_set, "description", ""),
+            "targets": [
+                {
+                    "name": t.name,
+                    "path": t.path,
+                    "enabled": t.enabled,
+                    "excludes": t.excludes,
+                }
+                for t in fs_set.targets
+            ],
+        })
+
+    render_output({"sets": sets_data}, output, "list-filesystem-sets")
+
+    if output != "json":
+        if not config.filesystem_sets:
+            console.print("[yellow]No filesystem backup sets configured[/yellow]")
+            return
+        for name, fs_set in config.filesystem_sets.items():
+            console.print(f"\n[bold cyan]{name}[/bold cyan]: {getattr(fs_set, 'description', '')}")
+            for t in fs_set.targets:
+                status_str = "[green]enabled[/green]" if t.enabled else "[dim]disabled[/dim]"
+                console.print(f"  {status_str} {t.path}")
+                for excl in t.excludes:
+                    console.print(f"    [dim]exclude: {excl}[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# init-config
+# ---------------------------------------------------------------------------
+
+@cli.command("init-config")
+@output_option
+@input_json_option
+@click.pass_context
+def init_config(ctx, output, input_json):
+    """Initialize configuration file from the bundled example template."""
+    merge_json_input(ctx, input_json)
+
+    console: Console = ctx.obj["console"]
+
+    config_path = os.path.expanduser("~/.config/bbackup/config.yaml")
+    config_dir = os.path.dirname(config_path)
+    os.makedirs(config_dir, exist_ok=True)
+
+    example_config = Path(__file__).parent.parent / "config.yaml.example"
+    if example_config.exists():
+        import shutil
+        shutil.copy(example_config, config_path)
+        render_output({"config_path": config_path, "created": True}, output, "init-config")
+        if output != "json":
+            console.print(f"[green]Configuration file created: {config_path}[/green]")
+            console.print("[dim]Edit the file to configure your backup settings.[/dim]")
     else:
-        key_dir = Path.home() / '.config' / 'bbackup'
-    
+        render_output({"config_path": config_path, "created": False}, output, "init-config",
+                      success=False, errors=["Example config template not found"])
+        if output != "json":
+            sys.stderr.write("Error: Example config not found\n")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+
+# ---------------------------------------------------------------------------
+# init-encryption
+# ---------------------------------------------------------------------------
+
+@cli.command("init-encryption")
+@click.option("--method", type=click.Choice(["symmetric", "asymmetric", "both"]),
+              default="symmetric", help="Encryption method to use")
+@click.option("--key-path", type=click.Path(), help="Directory to save key(s) (default: ~/.config/bbackup/)")
+@click.option("--password", help="Password for key encryption (optional)")
+@click.option("--algorithm", type=click.Choice(["rsa-4096", "ecdsa-p384"]), default="rsa-4096",
+              help="Algorithm for asymmetric keys")
+@click.option("--upload-github", is_flag=True, help="Remind about uploading public key to GitHub")
+@output_option
+@input_json_option
+@click.pass_context
+def init_encryption(ctx, method, key_path, password, algorithm, upload_github, output, input_json):
+    """Initialize encryption keys for backup at-rest protection."""
+    merge_json_input(ctx, input_json)
+
+    console: Console = ctx.obj["console"]
+
+    key_dir = Path(key_path).expanduser() if key_path else Path.home() / ".config" / "bbackup"
     key_dir.mkdir(parents=True, exist_ok=True)
-    
-    console.print("\n[bold cyan]Initializing encryption keys...[/bold cyan]\n")
-    
+
+    if output != "json":
+        console.print("\n[bold cyan]Initializing encryption keys...[/bold cyan]\n")
+
+    result_data: dict = {"method": method, "key_paths": {}, "config_snippet": "", "success": False}
+
     try:
-        if method in ['symmetric', 'both']:
-            console.print("[yellow]Generating symmetric key...[/yellow]")
+        if method in ("symmetric", "both"):
+            if output != "json":
+                console.print("[yellow]Generating symmetric key...[/yellow]")
             symmetric_key = EncryptionManager.generate_symmetric_key()
             key_file = key_dir / "encryption.key"
             key_file.write_bytes(symmetric_key)
-            key_file.chmod(0o600)  # Secure permissions
-            console.print(f"[green]✓[/green] Symmetric key saved to: {key_file}")
-            console.print(f"   Key size: {len(symmetric_key)} bytes")
-        
-        if method in ['asymmetric', 'both']:
-            console.print(f"[yellow]Generating asymmetric keypair ({algorithm})...[/yellow]")
+            key_file.chmod(0o600)
+            result_data["key_paths"]["symmetric"] = str(key_file)
+            if output != "json":
+                console.print(f"[green]x[/green] Symmetric key saved to: {key_file}")
+                console.print(f"   Key size: {len(symmetric_key)} bytes")
+
+        if method in ("asymmetric", "both"):
+            if output != "json":
+                console.print(f"[yellow]Generating asymmetric keypair ({algorithm})...[/yellow]")
             public_pem, private_pem = EncryptionManager.generate_keypair(algorithm)
-            
             public_key_file = key_dir / "backup_public.pem"
             private_key_file = key_dir / "backup_private.pem"
-            
             public_key_file.write_bytes(public_pem)
             private_key_file.write_bytes(private_pem)
-            
-            # Set secure permissions
             public_key_file.chmod(0o644)
             private_key_file.chmod(0o600)
-            
-            console.print(f"[green]✓[/green] Public key saved to: {public_key_file}")
-            console.print(f"[green]✓[/green] Private key saved to: {private_key_file}")
-            console.print("   [red]WARNING:[/red] Keep private key secure! Never share or upload it.")
-        
-        console.print("\n[bold green]Keys generated successfully![/bold green]\n")
-        
-        # Display configuration instructions
-        console.print("[bold]Next steps:[/bold]\n")
-        
-        if method in ['symmetric', 'both']:
-            console.print("[cyan]Symmetric Key Configuration:[/cyan]")
-            console.print("  Add to config.yaml:")
-            console.print("  ```yaml")
-            console.print("  encryption:")
-            console.print("    enabled: true")
-            console.print("    method: symmetric")
-            console.print("    symmetric:")
-            console.print(f"      key_file: {key_file}")
-            console.print("  ```\n")
-            
-            console.print("  [yellow]For multi-server deployment:[/yellow]")
-            console.print("  1. Upload key to secure location (GitHub gist, private repo)")
-            console.print("  2. Use key_url instead of key_file:")
-            console.print("     key_url: https://raw.githubusercontent.com/user/repo/encryption.key")
-            console.print("  3. Configure same URL on all servers\n")
-        
-        if method in ['asymmetric', 'both']:
-            console.print("[cyan]Asymmetric Key Configuration:[/cyan]")
-            console.print("  Add to config.yaml:")
-            console.print("  ```yaml")
-            console.print("  encryption:")
-            console.print("    enabled: true")
-            console.print("    method: asymmetric")
-            console.print("    asymmetric:")
-            console.print(f"      public_key: {public_key_file}")
-            console.print(f"      private_key: {private_key_file}")
-            console.print(f"      algorithm: {algorithm}")
-            console.print("  ```\n")
-            
-            console.print("  [yellow]For multi-server deployment:[/yellow]")
-            console.print("  1. Upload public key to GitHub:")
-            if upload_github:
-                console.print("     [dim](Manual upload required - GitHub CLI not integrated)[/dim]")
-            console.print("     - Create gist named 'bbackup-keys' or 'backup-keys'")
-            console.print("     - OR create repo named 'bbackup-keys' or 'backup-keys'")
-            console.print("     - Upload backup_public.pem file")
-            console.print("  2. Configure public key using GitHub shortcut (easiest):")
-            console.print("     public_key: github:YOUR_USERNAME")
-            console.print("     OR use explicit URL:")
-            console.print("     public_key: https://raw.githubusercontent.com/user/repo/backup_public.pem")
-            console.print("  3. Keep private key secure on restore servers only (local file)")
-            console.print("  4. Configure private key path on restore servers:")
-            console.print(f"     private_key: {private_key_file}\n")
-            console.print("  [bold cyan]GitHub Shortcut Examples:[/bold cyan]")
-            console.print("     github:username              # Auto-finds key in standard locations")
-            console.print("     github:username/gist:abc123  # Explicit gist ID")
-            console.print("     github:username/repo:backup-keys  # Explicit repo name")
-        
-        console.print("[bold]Security Notes:[/bold]")
-        console.print("  - Private keys should NEVER be uploaded or shared")
-        console.print("  - Use HTTPS URLs only for public keys")
-        console.print("  - Set proper file permissions (600 for private keys)")
-        console.print("  - Consider password-protecting key files\n")
-        
+            result_data["key_paths"]["public"] = str(public_key_file)
+            result_data["key_paths"]["private"] = str(private_key_file)
+            if output != "json":
+                console.print(f"[green]x[/green] Public key saved to: {public_key_file}")
+                console.print(f"[green]x[/green] Private key saved to: {private_key_file}")
+                console.print("   [red]WARNING:[/red] Keep private key secure. Never share or upload it.")
+
+        # Gap 6: build machine-readable config snippet; skip prose in JSON mode
+        if method in ("symmetric", "both"):
+            result_data["config_snippet"] = (
+                f"encryption:\n  enabled: true\n  method: symmetric\n"
+                f"  symmetric:\n    key_file: {result_data['key_paths'].get('symmetric', '')}\n"
+            )
+        elif method == "asymmetric":
+            result_data["config_snippet"] = (
+                f"encryption:\n  enabled: true\n  method: asymmetric\n"
+                f"  asymmetric:\n"
+                f"    public_key: {result_data['key_paths'].get('public', '')}\n"
+                f"    private_key: {result_data['key_paths'].get('private', '')}\n"
+                f"    algorithm: {algorithm}\n"
+            )
+
+        result_data["success"] = True
+        render_output(result_data, output, "init-encryption", success=True)
+
+        if output != "json":
+            console.print("\n[bold green]Keys generated successfully![/bold green]\n")
+            console.print("[bold]Next steps:[/bold]")
+            console.print(f"  Add the following to your config.yaml:\n\n{result_data['config_snippet']}")
+
     except Exception as e:
-        console.print(f"[red]Error generating keys: {e}[/red]")
-        sys.exit(1)
+        render_output(result_data, output, "init-encryption", success=False, errors=[str(e)])
+        if output != "json":
+            sys.stderr.write(f"Error generating keys: {e}\n")
+        sys.exit(EXIT_SYSTEM_ERROR)
 
 
-@cli.command("list-filesystem-sets")
-@click.pass_context
-def list_filesystem_sets(ctx):
-    """List configured filesystem backup sets"""
-    config: Config = ctx.obj["config"]
-    console: Console = ctx.obj["console"]
+# ---------------------------------------------------------------------------
+# skills
+# ---------------------------------------------------------------------------
 
-    if not config.filesystem_sets:
-        console.print("[yellow]No filesystem backup sets configured[/yellow]")
-        return
+@cli.command("skills")
+@click.argument("skill_id", required=False)
+@output_option
+def skills(skill_id, output):
+    """List available skills for AI agent discovery. Pass SKILL_ID for step-by-step detail."""
+    result = get_skill("bbackup", skill_id)
+    if result is None:
+        json_error(
+            "skills",
+            f"Unknown skill: {skill_id!r}. Run 'bbackup skills' for valid ids.",
+            EXIT_USER_ERROR,
+            output,
+        )
 
-    for name, fs_set in config.filesystem_sets.items():
-        console.print(f"\n[bold cyan]{name}[/bold cyan]: {fs_set.description}")
-        for t in fs_set.targets:
-            status_str = "[green]enabled[/green]" if t.enabled else "[dim]disabled[/dim]"
-            console.print(f"  {status_str} {t.path}")
-            for excl in t.excludes:
-                console.print(f"    [dim]exclude: {excl}[/dim]")
+    # Skills command always emits JSON directly (not via envelope) for level-0 discovery;
+    # For level-1 detail we still use the standard envelope.
+    if skill_id is None:
+        sys.stdout.write(json.dumps(result, indent=2, default=str) + "\n")
+    else:
+        render_output(result, output, "skills")
+        if output != "json":
+            console_inst = Console()
+            console_inst.print(f"\n[bold cyan]{result['id']}[/bold cyan]: {result['summary']}")
+            console_inst.print(f"\nWorkflow: {' -> '.join(result.get('workflow', []))}")
+            console_inst.print("\nExamples:")
+            for ex in result.get("examples", []):
+                console_inst.print(f"  [dim]{ex}[/dim]")
 
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     cli()

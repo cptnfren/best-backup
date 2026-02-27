@@ -37,7 +37,45 @@ The two strategies produce separate artifacts that are bundled into a timestampe
 
 ### `bbackup/cli.py`
 
-Click entry point for the `bbackup` command. Handles argument parsing and delegates to the appropriate class. Commands: `backup`, `restore`, `list-containers`, `list-backup-sets`, `list-backups`, `list-remote-backups`, `init-config`, `init-encryption`.
+Click entry point for the `bbackup` command. Handles argument parsing and delegates to the appropriate class. Commands: `backup`, `restore`, `list-containers`, `list-backup-sets`, `list-backups`, `list-remote-backups`, `list-filesystem-sets`, `init-config`, `init-encryption`, `skills`.
+
+Every command accepts `--output [text|json]`, `--input-json JSON`, and `backup`/`restore` also accept `--dry-run`. In JSON mode the command emits the standard envelope to stdout; all diagnostic text goes to stderr. The `BBACKUP_OUTPUT` and `BBACKUP_NO_INTERACTIVE` env vars apply globally.
+
+### `bbackup/cli_utils.py`
+
+Shared foundation for the AI-agent-friendly JSON I/O layer. Contains:
+
+- `output_option`, `input_json_option`, `dry_run_option` -- Click decorators applied to every command.
+- `merge_json_input(ctx, json_str)` -- parses `--input-json` and overwrites matching `ctx.params` keys.
+- `render_output(data, fmt, command, ...)` -- writes the standard JSON envelope to stdout when `fmt == "json"`.
+- `json_error(command, message, exit_code, fmt)` -- emits an error envelope (JSON mode) or stderr line (text mode) then exits.
+- `flatten_health_tuples(raw)` -- converts `Tuple[bool, str]` / `Tuple[bool, List, List]` values to named dicts for JSON consumers.
+- Exit constants: `EXIT_SUCCESS=0`, `EXIT_USER_ERROR=1`, `EXIT_CONFIG_ERROR=2`, `EXIT_SYSTEM_ERROR=3`, `EXIT_PARTIAL=4`, `EXIT_CANCELLED=5`.
+- Env var names: `BBACKUP_OUTPUT_ENV`, `BBACKUP_NO_INTERACTIVE_ENV`.
+
+### `bbackup/skills.py`
+
+Static skill descriptors for AI agent capability discovery. Contains `BBACKUP_SKILLS` and `BBMAN_SKILLS` dicts keyed by skill id, and `get_skill(cli, skill_id)` accessor.
+
+Each skill entry includes: `id`, `summary`, `workflow` (ordered command list), `steps` (each with `command`, `description`, `optional_flags`, `valid_values`, `input_json_schema`), `examples`, `output_format`, `exit_codes`.
+
+`get_skill(cli, None)` returns a level-0 overview with `agent_hint` and a compact skills list (80-90% token savings vs loading full `--help` trees). `get_skill(cli, skill_id)` returns the full step-by-step descriptor.
+
+### JSON envelope contract
+
+All commands emit exactly one JSON object to **stdout** in JSON mode:
+
+```json
+{
+  "schema_version": "1",
+  "command": "backup",
+  "success": true,
+  "data": { "...command-specific fields..." },
+  "errors": []
+}
+```
+
+`schema_version` bumps only on breaking field removals or renames; additive fields are always backward-compatible. All diagnostic and progress text is routed to **stderr** so stdout can be parsed unambiguously.
 
 ### `bbackup/config.py`
 

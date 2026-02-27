@@ -151,23 +151,162 @@ bbackup list-remote-backups --remote gdrive
 
 bbackup init-config
 bbackup init-encryption --method asymmetric --algorithm rsa-4096
+
+# AI agent / non-interactive flags (available on every command)
+bbackup list-containers --output json            # structured JSON output
+bbackup backup --containers app --input-json '{"incremental":true}'
+bbackup backup --containers app --dry-run        # plan without executing
+bbackup skills                                   # discover capabilities
+bbackup skills docker-backup                     # step-by-step + JSON schemas
 ```
 
 ### `bbman` commands
 
 ```bash
 bbman setup                    # First-time setup wizard
+bbman setup --no-interactive   # skip wizard (agent mode)
 bbman health                   # Docker, tools, config health check
 bbman check-deps               # Check dependencies
 bbman check-deps --install     # Install missing packages
 bbman validate-config          # Parse and validate config file
 bbman status                   # Backup history and totals
 bbman cleanup                  # Clean staging dirs and old logs
+bbman cleanup --yes            # skip confirmation (agent mode)
 bbman diagnostics              # Generate diagnostic report
+bbman diagnostics --report-file /tmp/report.txt  # save to file
 bbman check-updates            # Check for newer version
 bbman update                   # Self-update from repo
+bbman update --yes             # skip confirmation (agent mode)
 bbman repo-url --url URL       # Set the update source URL
 bbman run backup --containers app  # Run bbackup through the wrapper
+bbman skills                   # discover bbman capabilities
+bbman skills maintenance       # step-by-step maintenance guide
+
+# JSON output on any bbman command
+bbman health --output json
+bbman status --output json
+```
+
+---
+
+## Agent integration
+
+bbackup and bbman are natively compatible with AI agents. Every command supports structured JSON I/O, progressive skill discovery, and non-interactive execution without extra configuration.
+
+### Quick start for agents
+
+```bash
+# 1. Set global env vars once; all subprocesses inherit them
+export BBACKUP_OUTPUT=json           # all commands emit JSON envelope
+export BBACKUP_NO_INTERACTIVE=1      # no TUI, no prompts, no pagers
+
+# 2. Discover capabilities
+bbackup skills                        # level-0: list all skill ids + summaries
+bbackup skills docker-backup          # level-1: step-by-step guide + JSON schemas
+
+# 3. Run a backup with a flat JSON object
+bbackup backup \
+  --input-json '{"containers":["myapp","mydb"],"incremental":true,"no_interactive":true}' \
+  --output json
+```
+
+### JSON envelope
+
+Every command in JSON mode emits exactly this structure to **stdout**. All diagnostic and progress text goes to **stderr**.
+
+```json
+{
+  "schema_version": "1",
+  "command": "backup",
+  "success": true,
+  "data": { "...command-specific fields..." },
+  "errors": []
+}
+```
+
+- `schema_version` bumps only on breaking removals or renames; additive fields are always safe.
+- `errors` is always present; non-empty means `success: false`.
+- A non-zero exit code always accompanies `success: false`.
+
+### `--input-json` parameter passing
+
+Pass all parameters as a single flat JSON object. Keys match option names with hyphens converted to underscores. The object merges over any CLI flags already provided.
+
+```bash
+bbackup restore \
+  --input-json '{"backup_path":"/tmp/bbackup/backup_20260227","containers":["myapp"],"dry_run":true}' \
+  --output json
+```
+
+Unknown keys are silently ignored, making this forward-compatible.
+
+### Skills protocol
+
+```bash
+bbackup skills                         # list all skill ids
+bbackup skills docker-backup           # full spec: steps, schemas, examples
+bbman skills                           # bbman skill list
+bbman skills maintenance               # step-by-step maintenance guide
+```
+
+Level-0 output:
+
+```json
+{
+  "cli": "bbackup",
+  "version": "1.3.2",
+  "agent_hint": "Set BBACKUP_OUTPUT=json and BBACKUP_NO_INTERACTIVE=1 ...",
+  "skills": [
+    {"id": "docker-backup",     "summary": "...", "common": true},
+    {"id": "filesystem-backup", "summary": "...", "common": true},
+    {"id": "restore",           "summary": "...", "common": true}
+  ]
+}
+```
+
+### Environment variables
+
+| Variable | Effect |
+|---|---|
+| `BBACKUP_OUTPUT=json` | All commands emit JSON envelope without `--output json` |
+| `BBACKUP_NO_INTERACTIVE=1` | Suppresses TUI, prompts, and pagers system-wide |
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | Fully successful |
+| 1 | Bad argument, missing param, invalid `--input-json` |
+| 2 | Config not found or fails validation |
+| 3 | Docker unreachable, rsync/rclone missing, key generation failed |
+| 4 | Partial: some items succeeded, some failed |
+| 5 | Operation cancelled by user or agent |
+
+### Dry-run / pre-flight
+
+`backup` and `restore` both accept `--dry-run`. This resolves all targets and returns a plan in JSON format without executing anything.
+
+```bash
+bbackup backup --containers myapp --dry-run --output json
+```
+
+```json
+{
+  "schema_version": "1",
+  "command": "backup",
+  "success": true,
+  "data": {
+    "dry_run": true,
+    "would_backup": {
+      "containers": ["myapp"],
+      "filesystem_targets": [],
+      "remotes": [],
+      "incremental": false,
+      "scope": {"volumes": true, "configs": true, "networks": true}
+    }
+  },
+  "errors": []
+}
 ```
 
 ---
@@ -220,6 +359,8 @@ Full details in [docs/encryption.md](docs/encryption.md).
 best-backup/
 ├── bbackup/                # Main Python package
 │   ├── cli.py                  # bbackup CLI entry point
+│   ├── cli_utils.py            # JSON envelope, exit codes, shared decorators
+│   ├── skills.py               # Skill descriptors for agent discovery
 │   ├── config.py               # Config loading and all dataclasses
 │   ├── docker_backup.py        # Docker backup via temp Alpine containers
 │   ├── filesystem_backup.py    # Host filesystem backup via rsync
