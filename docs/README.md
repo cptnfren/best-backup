@@ -14,10 +14,4 @@
 
 ---
 
-## Dev notes
-
-The `dev/` folder contains internal development artifacts: test logs, deficiency reports, implementation tracking, and TUI notes. These are not user-facing documentation.
-
----
-
 Back to [README.md](../README.md).
