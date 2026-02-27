@@ -12,27 +12,29 @@ ref_commit: 56deced5291ac6489b6843b4e15922298583f2cc
 
 ## Purpose
 
-Create a new Agent Skills-compliant framework skill that packages a complete, generalized GitHub repository management and publishing automation system. The skill bundles Python tooling, a configuration schema, GitHub Actions workflows, and community health file templates. It is repo-agnostic: all identity fields, targets, and policies are driven by a `project.yaml` configuration file that the user populates for their specific project. No hardcoded project names, URLs, or author details appear in any part of the skill.
+Create a new Agent Skills-compliant framework skill that packages a complete, language-agnostic GitHub repository management and publishing automation system. The skill works with any project type: Python, TypeScript, Swift, Go, Rust, shell scripts, documentation-only repos, or anything else hosted on GitHub.
 
-This skill is derived from and validated against a working implementation at commit `56deced` of the reference repo. It generalizes that implementation into a portable, installable framework skill.
+All behavior is driven by a single `project.yaml` configuration file at the repo root. The user declares their project's identity, which files hold version strings (with the regex patterns to find them), which markdown files receive copyright footers, and which source-to-doc relationships to track. No language, framework, build tool, or file path is hardcoded inside the skill.
+
+This skill is derived from a working implementation at commit `56deced` of a reference Python repo. That implementation is generalized here into a framework primitive that is installable into any Localsetup v2 repository, regardless of what the repo contains.
 
 ---
 
 ## Background and motivation
 
-Publishing a Python project to GitHub and keeping it well-maintained requires a repeatable set of tasks that most developers rebuild from scratch each time. The reference implementation solved this for one repo. This skill captures that solution as a framework primitive so any repo using Localsetup v2 can adopt it in minutes.
+Publishing a project to GitHub and keeping it maintained over time involves a set of tasks that most teams rebuild from scratch on every new repo: identity propagation, version bumping, CHANGELOG management, copyright footers, CI workflows, community health files, and release automation. The reference implementation solved all of these for one specific Python project. This skill extracts that solution, strips all language-specific assumptions, and makes it available as a single installable unit.
 
 The skill covers:
 
-- Project identity management (author, company, copyright) propagated to all files from a single YAML config
-- Semantic version management driven by conventional commits
-- CHANGELOG generation grouped by commit type
-- Copyright footer stamping across all public markdown files
-- GitHub community health files (CONTRIBUTING, CODE_OF_CONDUCT, issue templates, PR template)
-- GitHub Actions CI/CD workflows (lint, syntax check, stale issues, auto GitHub Release on tag push)
-- Doc staleness detection keyed to source file changes
-- Broken internal link scanning across all public docs
-- A single release command that runs all steps in order with dry-run and rollback support
+- Project identity management (author, company, copyright year) propagated to any set of files via user-defined regex sync rules
+- Semantic versioning driven by conventional commits, reading and writing a plain `VERSION` file
+- CHANGELOG generation grouped by commit type, in Keep a Changelog format
+- Copyright footer stamping across any list of markdown files
+- GitHub community health files: CONTRIBUTING, CODE_OF_CONDUCT, issue templates, PR template
+- GitHub Actions workflows: a language-agnostic CI placeholder, stale issue management, and automatic GitHub Release creation on tag push
+- Doc staleness detection: user-declared source-to-doc map, evaluated against git-changed files
+- Broken internal link scanning across declared public docs
+- A single `release.py` command that runs all steps in order with dry-run support throughout
 
 ---
 
@@ -43,53 +45,55 @@ The skill covers:
 ```yaml
 name: localsetup-github-repo-manager
 description: >
-  Complete GitHub repository management and publishing automation for Python projects.
-  Manages project identity (author, company, copyright), semantic versioning from
-  conventional commits, CHANGELOG generation, copyright footer stamping, GitHub community
-  health files, and CI/CD workflows. Driven entirely by project.yaml with no hardcoded
-  values. Use when setting up a new GitHub repo, cutting a release, updating project
+  Language-agnostic GitHub repository management and publishing automation.
+  Manages project identity (author, company, copyright), semantic versioning
+  from conventional commits, CHANGELOG generation, copyright footer stamping,
+  GitHub community health files, and CI/CD workflows. All behavior is driven
+  by project.yaml with no hardcoded language, framework, or file paths. Works
+  with Python, TypeScript, Swift, Go, Rust, or any other project type. Use
+  when setting up a new GitHub repo, cutting a release, updating project
   identity, or adding community health files and CI to an existing project.
 metadata:
   version: "1.0"
 compatibility: >
-  Python >= 3.10. Requires PyYAML >= 6.0 (pip install pyyaml). Git CLI must be present.
-  GitHub CLI (gh) optional but required for release creation workflow. ruff optional
-  (used in CI lint workflow). All tooling is Python-only per framework TOOLING_POLICY.
+  The skill's management tooling requires Python >= 3.10 and PyYAML >= 6.0
+  (the managed repo itself may be any language). Git CLI must be present.
+  All scripts follow framework TOOLING_POLICY: Python-only, no shell scripts.
 ```
 
 ---
 
 ## Deliverables
 
-The agent implementing this PRD produces the following file tree inside the skill directory `_localsetup/skills/localsetup-github-repo-manager/`:
+The agent implementing this PRD produces the following file tree inside `_localsetup/skills/localsetup-github-repo-manager/`:
 
 ```
 localsetup-github-repo-manager/
-├── SKILL.md                          # Agent Skills-compliant skill definition
-├── project.yaml.template             # Identity config template (copy to repo root as project.yaml)
+├── SKILL.md
+├── project.yaml.template
 ├── scripts/
-│   ├── stamp.py                      # Copyright footer stamper + code file identity syncer
-│   ├── bump_version.py               # Semantic version bumper from conventional commits
-│   ├── check_docs.py                 # Doc staleness + broken link checker
-│   └── release.py                    # Full release workflow orchestrator
+│   ├── stamp.py          # Footer stamper + identity syncer (config-driven)
+│   ├── bump_version.py   # Semver bumper from conventional commits
+│   ├── check_docs.py     # Doc staleness + broken link checker
+│   └── release.py        # Full release workflow orchestrator
 ├── templates/
 │   ├── github/
-│   │   ├── CONTRIBUTING.md.tpl       # Contributor guide template
-│   │   ├── CODE_OF_CONDUCT.md.tpl    # Contributor Covenant v2.1 template
+│   │   ├── CONTRIBUTING.md.tpl
+│   │   ├── CODE_OF_CONDUCT.md.tpl
 │   │   ├── pull_request_template.md.tpl
 │   │   ├── ISSUE_TEMPLATE/
 │   │   │   ├── bug_report.md.tpl
 │   │   │   └── feature_request.md.tpl
 │   │   └── workflows/
-│   │       ├── ci.yml.tpl            # Lint + syntax + import check, Python matrix
-│   │       ├── stale.yml.tpl         # Stale issue/PR management
-│   │       └── release-notes.yml.tpl # Auto GitHub Release on tag push
-│   ├── CHANGELOG.md.tpl              # Keep a Changelog format seed
-│   └── LICENSE.mit.tpl               # MIT License template
+│   │       ├── ci.yml.tpl             # Language-agnostic CI placeholder
+│   │       ├── stale.yml.tpl
+│   │       └── release-notes.yml.tpl
+│   ├── CHANGELOG.md.tpl
+│   └── LICENSE.mit.tpl
 └── references/
-    ├── project-yaml-schema.md        # Field-by-field reference for project.yaml
-    ├── conventional-commits.md       # Commit prefix to bump type mapping
-    └── release-workflow.md           # Full release step diagram and flags reference
+    ├── project-yaml-schema.md
+    ├── conventional-commits.md
+    └── release-workflow.md
 ```
 
 ---
@@ -99,147 +103,208 @@ localsetup-github-repo-manager/
 ### Step 1: Bootstrap skill directory
 
 1. Create `_localsetup/skills/localsetup-github-repo-manager/` with the directory structure above.
-2. Verify the skill directory name matches the `name` field in SKILL.md frontmatter exactly.
-3. Do not create any files in the target repo yet; all repo-level changes are applied by the user running the skill's scripts.
+2. Verify the directory name matches the `name` field in SKILL.md frontmatter exactly.
+3. Do not modify the target repo during skill creation. All repo-level changes are applied by the user after installation.
 
 ### Step 2: Write SKILL.md
 
-Produce a complete SKILL.md that satisfies the Agent Skills specification (as documented in `_localsetup/docs/AGENT_SKILLS_COMPLIANCE.md` and `_localsetup/docs/SKILL_NORMALIZATION.md`):
+Produce a complete SKILL.md satisfying the Agent Skills spec (`_localsetup/docs/AGENT_SKILLS_COMPLIANCE.md`, `_localsetup/docs/SKILL_NORMALIZATION.md`):
 
 - Frontmatter: `name`, `description` (under 1024 chars), `metadata.version`, `compatibility`
-- Body structured as: Purpose, Prerequisites, Quick start, Workflows (with subsections per tool), Configuration reference, Acceptance criteria
-- Keep under 500 lines
-- Platform-neutral: no references to specific repos, usernames, company names, or install-specific paths
-- All script invocations shown as `python _localsetup/skills/localsetup-github-repo-manager/scripts/<script>.py`
+- Body structured as: Purpose, Prerequisites, Installation, Workflows, Configuration reference
+- Keep body under 500 lines
+- Language-neutral throughout: no mention of pip, npm, cargo, swift, ruff, or any build tool
+- Script invocations shown as `python _localsetup/skills/localsetup-github-repo-manager/scripts/<name>.py`
 
-#### SKILL.md body must cover these workflows
+The SKILL.md body must cover four workflows:
 
-**Identity workflow:** User edits `project.yaml` at repo root, runs `stamp.py`, all docs and code files update in one command.
+**Identity workflow.** User edits `project.yaml`, runs `stamp.py`. Every doc listed in `stamp_targets` gets a refreshed footer. Every file listed in `version_sync.code_files` gets its identity fields updated via the regex rules in `project.yaml`. One command, idempotent.
 
-**Release workflow:** Single command `release.py` runs pre-flight, doc validation, identity stamp, version bump, CHANGELOG prepend, commit, tag, and push. Supports `--dry-run`, `--no-push`, `--allow-stale-docs`, `--major`/`--minor`/`--patch` force flags.
+**Release workflow.** User runs `release.py`. Steps execute in order: pre-flight, doc validation, stamp, version bump and CHANGELOG, commit, tag, optional push. Supports `--dry-run`, `--no-push`, `--allow-stale-docs`, `--major`/`--minor`/`--patch`.
 
-**Doc check workflow:** `check_docs.py` scans for broken internal links and flags docs that need review based on which source files changed since a given ref.
+**Doc check workflow.** User runs `check_docs.py`. Reports broken internal links and flags docs whose paired source files have changed since a given git ref.
 
-**Bootstrap workflow:** User runs install command from SKILL.md to copy `project.yaml.template` to repo root, copy `.github/` templates, optionally copy `CHANGELOG.md.tpl` and `LICENSE.mit.tpl` to repo root. Instructions walk the user through filling in `project.yaml` and running `stamp.py` for the first time.
+**Bootstrap workflow.** User copies `project.yaml.template` to repo root, fills in values, copies `.github/` templates (substituting tokens), optionally copies `CHANGELOG.md.tpl` and `LICENSE.mit.tpl`. SKILL.md provides the exact commands.
 
 ### Step 3: Write `project.yaml.template`
 
-Fully documented template. Every field has an inline comment explaining its purpose and which scripts use it. Fields:
+Every field must have an inline comment stating its purpose and which scripts consume it. The template must contain no language-specific defaults or examples.
 
 ```yaml
-# project.yaml - project identity and stamp configuration
-# Copy this file to your repo root as project.yaml and fill in your values.
-# Run: python _localsetup/skills/localsetup-github-repo-manager/scripts/stamp.py
+# project.yaml
+# Single source of truth for project identity and repo management configuration.
+# Copy to your repo root. Fill in all fields. Then run:
+#   python _localsetup/skills/localsetup-github-repo-manager/scripts/stamp.py
 
 project:
-  name: ""                # Short package/tool name (used in docs and setup.py)
-  description: ""         # One-line description
-  repository: ""          # Full GitHub URL: https://github.com/OWNER/REPO
+  name: ""          # Short name used in docs and templates  [stamp, release]
+  description: ""   # One-line description                   [templates]
+  repository: ""    # Full GitHub URL: https://github.com/OWNER/REPO  [stamp, release]
 
 author:
-  name: ""                # Full name of the primary author
-  github: ""              # GitHub username (no @)
-  email: ""               # Optional. Leave blank to omit from setup.py
+  name: ""          # Full name of the primary author        [stamp, templates, LICENSE]
+  github: ""        # GitHub username (no @)                 [templates]
+  email: ""         # Optional contact email                 [templates; leave blank to omit]
 
 company:
-  name: ""                # Company or organization name (linked in footer)
-  url: ""                 # Company website URL
+  name: ""          # Company or organization (appears linked in footer)  [stamp]
+  url: ""           # Company website URL                                 [stamp]
 
 copyright:
-  year: 2026              # Copyright year. Update annually or set to range "2024-2026"
-  license: MIT            # License name shown in footer
+  year: ""          # Copyright year or range, e.g. 2026 or 2024-2026   [stamp, LICENSE]
+  license: MIT      # License identifier shown in footer                 [stamp, templates]
 
-# Markdown files that receive the centered copyright footer.
-# Paths are relative to repo root. Edit to match your actual doc layout.
+# ---------------------------------------------------------------------------
+# Footer: markdown files that receive the centered copyright footer block.
+# Paths relative to repo root. Add or remove to match your actual layout.
+# stamp.py reads this list. Safe to leave a path in the list even if the
+# file does not yet exist; stamp.py skips missing files with status [-].
+# ---------------------------------------------------------------------------
 stamp_targets:
   - README.md
-  - QUICKSTART.md
-  - INSTALL.md
   - CHANGELOG.md
-  - docs/README.md
   - .github/CONTRIBUTING.md
   - .github/CODE_OF_CONDUCT.md
+  # Add any other public markdown files here:
+  # - docs/architecture.md
+  # - docs/api.md
+
+# ---------------------------------------------------------------------------
+# Version sync: files outside VERSION that embed the version string.
+# stamp.py and bump_version.py use this list to keep version strings current.
+# Each entry has:
+#   path    - path relative to repo root
+#   pattern - Python regex with one capture group before and one after the version
+#   replace - replacement template; use \g<1> and \g<2> for the capture groups
+#
+# Examples for common patterns across languages:
+#   Python __init__.py:  pattern: '(__version__\s*=\s*")[^"]+(")'
+#   package.json:        pattern: '("version":\s*")[^"]+(")'
+#   Swift Package.swift: pattern: '(version:\s*")[^"]+(")'
+#   Cargo.toml:          pattern: '(^version\s*=\s*")[^"]+(")'
+#   README badge:        pattern: '(!\[version\]\([^)]+/v)[^)]+(\))'
+#
+# Leave this list empty if VERSION is your only version file.
+# ---------------------------------------------------------------------------
+version_sync:
+  code_files: []
+  # - path: "src/index.ts"
+  #   pattern: '(export const VERSION = ")[^"]+(")'
+  #   replace: '\g<1>{version}\g<2>'
+  # - path: "package.json"
+  #   pattern: '("version":\s*")[^"]+(")'
+  #   replace: '\g<1>{version}\g<2>'
+
+# ---------------------------------------------------------------------------
+# Doc staleness map: when a source file changes, which docs should be reviewed?
+# check_docs.py uses this map. Each entry has:
+#   sources - list of file globs (relative to repo root)
+#   docs    - list of doc paths that cover those sources
+#   reason  - human-readable string explaining the relationship
+#
+# Populate this to match your project's actual structure.
+# Leave empty to skip staleness checking (link checking still runs).
+# ---------------------------------------------------------------------------
+doc_map: []
+# - sources: ["src/**/*.ts"]
+#   docs: ["README.md", "docs/api.md"]
+#   reason: "Source API changed"
+# - sources: ["Cargo.toml", "src/lib.rs"]
+#   docs: ["README.md", "docs/architecture.md"]
+#   reason: "Core library changed"
+
+# ---------------------------------------------------------------------------
+# Public docs: files always checked for broken internal links.
+# ---------------------------------------------------------------------------
+public_docs:
+  - README.md
+  - CHANGELOG.md
+  - .github/CONTRIBUTING.md
+  # Add any other published markdown files:
+  # - docs/api.md
 ```
 
-### Step 4: Write Python scripts (in `scripts/`)
+### Step 4: Write Python scripts
 
-All four scripts must conform to the framework tooling standard as defined in `_localsetup/docs/TOOLING_POLICY.md` and `_localsetup/docs/INPUT_HARDENING_STANDARD.md`:
+All scripts follow the framework standard (`_localsetup/docs/TOOLING_POLICY.md`, `_localsetup/docs/INPUT_HARDENING_STANDARD.md`):
 
-- Python 3.10+ only
-- PyYAML for all YAML parsing (never parse YAML by hand)
-- `require_deps()` from `lib.deps` at startup for dependency checking
-- Hostile-by-default input handling: validate all CLI args, file paths, and config fields; emit actionable errors to stderr with context
-- No silent failure on critical paths
-- All file writes are atomic (write to temp, rename) or guarded by existence checks
-- `--dry-run` flag on every script that modifies files or runs git commands
-- All scripts are importable as modules (no bare module-level side effects)
+- Python 3.10+ only. PyYAML for all YAML. `require_deps()` from `lib.deps` at startup.
+- Hostile-by-default: validate all CLI args, config fields, and file paths; emit actionable errors to stderr with field name and context.
+- No silent failure on critical paths.
+- `--dry-run` on every script that modifies files or runs git commands.
+- All scripts importable as modules (no bare module-level side effects outside `if __name__ == "__main__"`).
+- No hardcoded file names, language names, or tool names anywhere in script logic.
 
-#### `stamp.py` - Identity stamper
+#### `stamp.py`
 
-Behavior:
-- Load `project.yaml` from repo root (path configurable via `--config`)
-- Validate all required fields (author.name, company.name, company.url, copyright.year, project.repository); emit field-specific errors to stderr if missing
-- Build footer HTML block: centered `<p>`, author name on line 1, `&copy; YEAR <a href="COMPANY_URL">COMPANY_NAME</a> &mdash; <a href="REPO/blob/main/LICENSE">LICENSE License</a>` on line 2
-- Wrap footer in sentinel comments `<!-- project-footer:start -->` / `<!-- project-footer:end -->` for idempotent replacement
-- For each path in `stamp_targets`: strip existing footer block if present, append two blank lines + footer block
-- Sync identity to code files:
-  - `setup.py`: `author=` field
-  - `bbackup/__init__.py` (or equivalent): `__author__ =` field (path configurable; skip gracefully if not found)
-  - `LICENSE`: copyright line matching pattern `Copyright (c) YEAR NAME`
-- Output per-file status legend: `[+] stamped`, `[~] updated`, `[=] unchanged`, `[-] skipped`, `[!] no-match`
-- Flags: `--dry-run`, `--no-docs`, `--no-code`, `--config PATH`
+Responsibilities:
 
-#### `bump_version.py` - Version bumper
+1. Load and validate `project.yaml` (path via `--config`, default `./project.yaml`). Required fields: `author.name`, `company.name`, `company.url`, `copyright.year`, `project.repository`. Emit per-field errors to stderr if missing.
+2. Build footer HTML: `<br><br>` separator, `<p align="center">`, author name on line 1, `&copy; YEAR <a href="COMPANY_URL">COMPANY_NAME</a> &mdash; <a href="REPO_URL/blob/main/LICENSE">LICENSE License</a>` on line 2, closing `</p>`.
+3. Wrap footer in sentinel comments `<!-- project-footer:start -->` / `<!-- project-footer:end -->` for idempotent replacement.
+4. For each path in `stamp_targets`: strip existing sentinel block, append `\n\n` + footer block. Skip missing files with status `[-]`.
+5. For each entry in `version_sync.code_files`: apply the user-supplied `pattern` and `replace` fields to sync the author/identity string. The replace template is not constrained to a particular language; it is whatever the user configured. Skip entries whose `path` does not exist.
+6. Update `LICENSE` copyright line by matching `Copyright (c) YEAR NAME` pattern if LICENSE exists.
+7. Print per-file status: `[+] stamped`, `[~] updated`, `[=] unchanged`, `[-] skipped (not found)`, `[!] no-match`.
 
-Behavior:
-- Read `VERSION` file from repo root
-- Get commits since last git tag; if no tag exists, use root commit as base (not `HEAD`, to avoid scanning entire history)
-- Classify commits by conventional commit prefix:
-  - `BREAKING CHANGE:` in body or `type!:` prefix: major bump
-  - `feat:` or `feat(scope):`: minor bump
-  - All others: patch bump
-- Write incremented version to `VERSION`
-- Sync version string to configurable targets (default: `bbackup/__init__.py`, `setup.py`, `README.md`)
-- Prepend new dated section to `CHANGELOG.md` using `generate_changelog_entry()`:
-  - Group commits by section: Added (feat), Fixed (fix), Changed (perf/refactor), Documentation (docs), Maintenance (chore/test/ci/build)
-  - Skip version bump commits from changelog entries
-  - Update `[Unreleased]` comparison link and add new version link at bottom of CHANGELOG
-- Flags: `--dry-run`, `--major`, `--minor`, `--patch` (force override)
-- All functions importable: `read_version()`, `write_version()`, `get_commits_since_last_tag()`, `determine_bump_type()`, `parse_semver()`, `bump()`, `generate_changelog_entry()`, `prepend_changelog()`
+Flags: `--dry-run`, `--no-docs` (skip markdown), `--no-code` (skip code files and LICENSE), `--config PATH`.
 
-#### `check_docs.py` - Doc staleness and link checker
+#### `bump_version.py`
 
-Behavior:
-- Accept `--since REF` (default `HEAD~1`; accepts `last-tag` as special value)
-- Run `git diff --name-only SINCE HEAD` to get changed files
-- Map changed source files to docs that should be reviewed using a configurable `SOURCE_TO_DOC_MAP` (list of source globs, doc paths, reason string)
-- Scan all files in `PUBLIC_DOCS` list for broken internal markdown links: `[text](path)` where path is not `http`, not `#`, and the resolved target does not exist on disk
-- Return structured `DocCheckResult` dataclass: `changed_sources`, `docs_to_review` (list of `(doc, reason)`), `broken_links` (list of `(doc, link)`)
-- Exit code 0 if clean, 1 if issues found
-- Flags: `--since REF`, `--verbose`, configurable `PUBLIC_DOCS` and `SOURCE_TO_DOC_MAP` via `--config`
+Responsibilities:
 
-#### `release.py` - Release orchestrator
+1. Read `VERSION` file from repo root.
+2. Get commits since the last git tag. If no tag exists, use the root commit as the base (not `HEAD`, which would scan the entire history and incorrectly classify a repo's full history as "unreleased").
+3. Classify commits by conventional commit prefix to determine bump type:
+   - `BREAKING CHANGE:` in message body or `type!:` prefix: major
+   - `feat:` or `feat(scope):`: minor
+   - All other recognized prefixes: patch
+4. Write incremented version to `VERSION`.
+5. Sync version string to each entry in `version_sync.code_files` using the user-supplied `pattern` and `replace` fields. Each pattern applies a regex substitution; the script does not know or care what language the file is.
+6. Prepend a new dated section to `CHANGELOG.md` via `generate_changelog_entry()`:
+   - Groups commits by section label: Added (feat), Fixed (fix), Changed (perf/refactor), Documentation (docs), Maintenance (chore/test/ci/build/style)
+   - Skips version bump commits (messages matching `bump version to`)
+   - Updates the `[Unreleased]` comparison link and appends the new version comparison link at the bottom of CHANGELOG
+7. Exportable functions: `read_version()`, `write_version()`, `parse_semver()`, `bump()`, `get_commits_since_last_tag()`, `determine_bump_type()`, `generate_changelog_entry()`, `prepend_changelog()`, `VERSION_SYNC_TARGETS` (built from config).
 
-Behavior (ordered steps, with step counter displayed):
-1. Pre-flight: clean working tree (unless `--allow-dirty`), on release branch, remote reachable (unless `--no-push`)
-2. Doc link check: call `check_docs.run()`; abort on broken links; flag stale docs unless `--allow-stale-docs`
-3. Determine version bump: read commits, classify, determine bump type, compute new version; check tag does not already exist
-4. Confirm: interactive `[y/N]` prompt showing current -> new version (skipped on `--dry-run`)
-5. Stamp: call `stamp.stamp_docs()` and `stamp.sync_code_files()` to refresh all footers and identity fields
-6. Bump and sync: call `bump_version.run()` to write new version and update all sync targets; prepend CHANGELOG entry
-7. Commit: stage all modified files (VERSION, `__init__.py`, setup.py, README.md, CHANGELOG.md, LICENSE, all stamp targets); commit with message `chore: bump version to X.Y.Z`
-8. Tag: create annotated git tag `vX.Y.Z` with message `Release vX.Y.Z`
-9. Push (optional): push branch and tag to origin
+Flags: `--dry-run`, `--major`, `--minor`, `--patch`, `--config PATH`.
 
-Flags: `--dry-run`, `--no-push`, `--allow-dirty`, `--allow-stale-docs`, `--major`, `--minor`, `--patch`, `--since REF`, `--branch NAME` (default: main)
+#### `check_docs.py`
 
-Step counter adjusts total automatically based on `--no-push`.
+Responsibilities:
 
-### Step 5: Write GitHub template files (in `templates/github/`)
+1. Accept `--since REF` (default `HEAD~1`; `last-tag` resolves to the most recent git tag or falls back to `HEAD~1`).
+2. Run `git diff --name-only SINCE HEAD` to get changed files.
+3. Load `doc_map` from `project.yaml`. For each entry whose `sources` globs match a changed file, flag the paired `docs` for review with the `reason` string.
+4. Load `public_docs` from `project.yaml`. For each file, scan for broken internal markdown links (`[text](path)` where path is not `http://`, not `https://`, not `#`, and the resolved file does not exist on disk).
+5. Return a `DocCheckResult` dataclass: `changed_sources`, `docs_to_review` (list of `(doc, reason)`), `broken_links` (list of `(doc, link)`).
+6. Exit code 0 if clean, 1 if any issues.
 
-All `.tpl` files use `{{PLACEHOLDER}}` substitution tokens that the bootstrap command replaces with values from `project.yaml`. Tokens:
+Flags: `--since REF`, `--verbose`, `--config PATH`.
 
-| Token | Value |
+#### `release.py`
+
+Orchestrates the full release in order. Each step prints `[N/TOTAL] Label`. Total adjusts automatically when `--no-push` is set.
+
+Steps:
+
+1. Pre-flight: working tree clean (unless `--allow-dirty`), on release branch (configurable, default `main`), remote reachable (unless `--no-push`).
+2. Doc link check: call `check_docs.run()`; abort if broken links found; flag stale docs unless `--allow-stale-docs`.
+3. Determine bump: read commits, classify, compute new version; verify tag does not already exist.
+4. Confirm: interactive `[y/N]` prompt showing current version and new version. Skipped under `--dry-run`.
+5. Stamp: run `stamp.stamp_docs()` and `stamp.sync_code_files()` to refresh footers and identity.
+6. Bump and sync: run `bump_version.run()` to write `VERSION`, sync all `version_sync.code_files`, prepend CHANGELOG entry.
+7. Commit: stage `VERSION`, `CHANGELOG.md`, `LICENSE`, all `stamp_targets`, all `version_sync.code_files` paths. Commit with message `chore: bump version to X.Y.Z`.
+8. Tag: create annotated git tag `vX.Y.Z` with message `Release vX.Y.Z`.
+9. Push (optional): push branch and tag to origin.
+
+Flags: `--dry-run`, `--no-push`, `--allow-dirty`, `--allow-stale-docs`, `--major`, `--minor`, `--patch`, `--since REF`, `--branch NAME`, `--config PATH`.
+
+### Step 5: Write GitHub template files
+
+All `.tpl` files use `{{TOKEN}}` substitution. The bootstrap step renders them by reading `project.yaml` and replacing tokens before writing to the target repo. Tokens:
+
+| Token | Source field |
 |---|---|
 | `{{PROJECT_NAME}}` | `project.name` |
 | `{{REPO_URL}}` | `project.repository` |
@@ -250,72 +315,135 @@ All `.tpl` files use `{{PLACEHOLDER}}` substitution tokens that the bootstrap co
 | `{{COPYRIGHT_YEAR}}` | `copyright.year` |
 | `{{LICENSE}}` | `copyright.license` |
 
-Files to produce:
+Files to produce and their required content:
 
-- **`CONTRIBUTING.md.tpl`**: dev setup (pip install -e .), commit conventions table (feat/fix/docs/refactor/perf/test/chore/BREAKING CHANGE), PR process (one concern per PR, CI must be green, reference issue with `Closes #N`), bug reporting pointer
-- **`CODE_OF_CONDUCT.md.tpl`**: Contributor Covenant v2.1 full text with `{{AUTHOR_NAME}}` as enforcement contact
-- **`pull_request_template.md.tpl`**: summary field, related issue field (Closes #N), type checkboxes (bug fix, new feature, docs, refactor, other), pre-flight checklist (syntax check, conventional commit format, docs updated, no secrets)
-- **`ISSUE_TEMPLATE/bug_report.md.tpl`**: name, about, labels frontmatter; fields: what happened, steps to reproduce, command and output (code block), environment (OS, Python, tool version, install method), config (YAML block), additional context
-- **`ISSUE_TEMPLATE/feature_request.md.tpl`**: name, about, labels frontmatter; fields: problem this solves, proposed solution, alternatives considered, additional context
-- **`workflows/ci.yml.tpl`**: trigger on push + PR to main; matrix `python-version: ["3.10", "3.11", "3.12"]`; steps: checkout, setup-python, install ruff + pip install -e ., ruff check, py_compile on all .py files, configurable import check list
-- **`workflows/stale.yml.tpl`**: weekly schedule; issues stale after 60d, close after 14d; PRs stale after 30d, close after 14d; exempt labels: pinned, security, in-progress
-- **`workflows/release-notes.yml.tpl`**: trigger on `v*` tag push; extract version from tag; extract CHANGELOG section for that version; create GitHub Release via `softprops/action-gh-release@v2` with body from CHANGELOG
+**`CONTRIBUTING.md.tpl`**
 
-### Step 6: Write reference docs (in `references/`)
+Sections: how to set up a development environment (generic: "clone the repo, install dependencies using your project's package manager"), the conventional commit table (all prefixes and bump types), PR process (one concern per PR, CI must pass, reference issue with `Closes #N`), how to report bugs (link to bug report template).
 
-- **`project-yaml-schema.md`**: table of every field, its type, required/optional status, default value, and which scripts consume it
-- **`conventional-commits.md`**: table of commit prefix to bump type, section label, and example; note on `BREAKING CHANGE` in body; note on `!` suffix
-- **`release-workflow.md`**: numbered diagram of all release steps, flags that affect each step, and what `--dry-run` skips; rollback instructions (`git tag -d vX.Y.Z && git reset --soft HEAD~1`)
+No mention of any specific language, build tool, package manager, or install command. Use language-neutral phrasing such as "install dependencies per your project's setup instructions."
 
-### Step 7: Register skill with the framework
+**`CODE_OF_CONDUCT.md.tpl`**
 
-After all files are written, update the framework's skill registry per `_localsetup/docs/PLATFORM_REGISTRY.md`. This includes:
+Full Contributor Covenant v2.1 text. `{{AUTHOR_NAME}}` appears as the enforcement contact. No other customization.
 
-- Adding an entry to the skills catalog table in `_localsetup/docs/SKILLS.md`
-- Deploying the skill to the platform-specific path (e.g. `.cursor/skills/localsetup-github-repo-manager/SKILL.md` for Cursor) per the platform registration instructions
+**`pull_request_template.md.tpl`**
+
+Fields: summary (free text), related issue (`Closes #N` or `No related issue`), type checkboxes (Bug fix, New feature, Documentation, Refactor, Other). Pre-flight checklist: code builds and tests pass per project's standard process, conventional commit format used, docs updated if behavior changed, no secrets or PII included.
+
+No language-specific checklist items.
+
+**`ISSUE_TEMPLATE/bug_report.md.tpl`**
+
+Frontmatter: `name`, `about`, `labels: bug`. Sections: what happened (expected vs actual), steps to reproduce (numbered list), command and output (fenced code block), environment (OS, tool version, install method - all generic), configuration (fenced block, "remove sensitive values"), additional context.
+
+Environment section asks for "tool version" and "install method" generically, not Python version or pip.
+
+**`ISSUE_TEMPLATE/feature_request.md.tpl`**
+
+Frontmatter: `name`, `about`, `labels: enhancement`. Sections: problem this solves, proposed solution, alternatives considered, additional context.
+
+**`workflows/ci.yml.tpl`**
+
+Trigger: push and pull_request targeting main branch. Single job named `build-and-test`. Steps: checkout (actions/checkout@v4), then a clearly marked placeholder block instructing the user to replace it with their language's setup and test steps. The placeholder comment reads:
+
+```yaml
+# TODO: Replace the steps below with your project's build and test commands.
+# Examples:
+#   Python:     pip install -e . && pytest
+#   Node/TS:    npm ci && npm test
+#   Go:         go test ./...
+#   Rust:       cargo test
+#   Swift:      swift test
+#   Other:      adapt to your build system
+- name: Build and test
+  run: echo "Replace this step with your build and test commands"
+```
+
+The workflow file is otherwise complete and functional (checkout, correct trigger syntax, job definition). The user only needs to replace the placeholder run command.
+
+**`workflows/stale.yml.tpl`**
+
+Schedule: weekly (Monday 09:00 UTC) plus `workflow_dispatch`. Uses `actions/stale@v9`. Issues: stale after 60 days, close after 14 more. PRs: stale after 30 days, close after 14 more. Exempt labels: `pinned`, `security`, `in-progress`. All label names and messages use `{{PROJECT_NAME}}` where contextual.
+
+**`workflows/release-notes.yml.tpl`**
+
+Trigger: push of tags matching `v*`. Steps: checkout (full history, `fetch-depth: 0`), extract version from tag, extract matching CHANGELOG section via `awk`, create GitHub Release via `softprops/action-gh-release@v2` with body from CHANGELOG section. Permissions: `contents: write`. No language-specific steps.
+
+**`CHANGELOG.md.tpl`**
+
+Keep a Changelog format seed with `[Unreleased]` section, one seeded `[{{VERSION}}]` entry placeholder, and comparison links at the bottom. Footer not included (stamp.py handles that separately).
+
+**`LICENSE.mit.tpl`**
+
+Standard MIT License text with `{{COPYRIGHT_YEAR}}` and `{{AUTHOR_NAME}}, {{COMPANY_NAME}}` in the copyright line.
+
+### Step 6: Write reference docs
+
+**`references/project-yaml-schema.md`**
+
+Table listing every field in `project.yaml.template`: field path (dotted), type, required/optional, default, and which scripts consume it. A second table lists the `version_sync.code_files` entry schema with fields `path`, `pattern`, `replace` and example rows for Python, Node/TypeScript, Go, Rust, and Swift showing what the pattern and replace look like for each. A third table covers `doc_map` entry fields.
+
+**`references/conventional-commits.md`**
+
+Table of commit prefix, bump type triggered, CHANGELOG section it appears under, and one example commit message per prefix. Notes on `BREAKING CHANGE:` in the message body and on the `!` suffix (e.g. `feat!:`). Does not reference any specific language.
+
+**`references/release-workflow.md`**
+
+Numbered list of all release steps matching `release.py`'s step counter. For each step: what it does, which flags affect it, and what `--dry-run` skips. Rollback instructions: `git tag -d vX.Y.Z && git reset --soft HEAD~1 && git push origin --delete vX.Y.Z` with a warning to only run this before the release is announced. Step count matrix showing total steps with and without `--no-push`.
+
+### Step 7: Register the skill
+
+After all files are written, update the framework skill registry per `_localsetup/docs/PLATFORM_REGISTRY.md`:
+
+- Add entry to the skills catalog table in `_localsetup/docs/SKILLS.md`
+- Deploy to the platform-specific path (e.g. `.cursor/skills/localsetup-github-repo-manager/SKILL.md` for Cursor) per platform registration instructions
 
 ---
 
 ## Acceptance criteria
 
-All of the following must be true before the skill is marked `done`:
-
-- [ ] `_localsetup/skills/localsetup-github-repo-manager/SKILL.md` exists and passes Agent Skills spec validation (name matches directory, description under 1024 chars, body under 500 lines)
-- [ ] `project.yaml.template` contains every field listed in the schema with inline documentation comments
-- [ ] All four scripts (`stamp.py`, `bump_version.py`, `check_docs.py`, `release.py`) are present and importable without error on Python 3.10
-- [ ] `python scripts/stamp.py --dry-run` completes without error against a test repo containing a minimal `project.yaml`
-- [ ] `python scripts/bump_version.py --dry-run` completes without error on a repo with at least one conventional commit since the last tag
-- [ ] `python scripts/release.py --dry-run --allow-stale-docs` completes without error on a clean repo
-- [ ] `python scripts/check_docs.py --since HEAD~1` exits 0 on a repo with no broken links, 1 on a repo with a broken link
-- [ ] All template files exist in `templates/github/` with correct token names
+- [ ] SKILL.md exists, passes Agent Skills spec validation, description is under 1024 chars, body under 500 lines
+- [ ] SKILL.md contains no references to any specific programming language, build tool, or package manager
+- [ ] `project.yaml.template` contains all fields defined in this PRD with inline comments, including `version_sync.code_files`, `doc_map`, and `public_docs`
+- [ ] All four scripts are present and importable without error on Python 3.10
+- [ ] No script contains hardcoded filenames like `setup.py`, `package.json`, `Cargo.toml`, `__init__.py`, or any other language-specific path
+- [ ] `stamp.py --dry-run` completes without error against a minimal `project.yaml` with empty `version_sync.code_files`
+- [ ] `stamp.py` run twice on the same files produces identical output (idempotency)
+- [ ] `bump_version.py --dry-run` completes without error on a repo with at least one conventional commit
+- [ ] `release.py --dry-run --allow-stale-docs` completes without error on a clean repo
+- [ ] `check_docs.py --since HEAD~1` exits 0 on a repo with no broken links, 1 on a repo with one broken link
+- [ ] CI workflow template contains a clearly marked TODO placeholder, not any specific build command
+- [ ] CONTRIBUTING template contains no language-specific setup instructions
+- [ ] Bug report template asks for "tool version" and "OS version" generically, not "Python version"
+- [ ] `version_sync` example rows in the reference doc cover at least: Python, Node/TypeScript, Go, Rust, Swift
+- [ ] All template tokens use the `{{TOKEN}}` format consistently
 - [ ] All three reference docs exist in `references/`
 - [ ] Skill is registered in `_localsetup/docs/SKILLS.md`
-- [ ] No hardcoded project names, author names, URLs, or repo paths appear anywhere in the skill
-- [ ] Running `stamp.py` twice on the same file produces identical output (idempotency check)
 - [ ] `ruff check scripts/` passes with no errors
-- [ ] SKILL.md includes a complete "Quick start" section with the bootstrap command sequence
 
 ---
 
 ## Verification plan
 
-1. Copy `project.yaml.template` to a scratch test repo as `project.yaml`, fill in test values
-2. Run `stamp.py --dry-run` and verify the footer preview matches expected HTML structure
-3. Run `stamp.py` and verify footers appear in all `stamp_targets`, sentinel comments wrap the block
-4. Run `stamp.py` again and verify all statuses show `unchanged` (idempotency)
-5. Make two commits with `feat:` prefix, run `bump_version.py --dry-run` and verify bump type is `minor`
-6. Run `release.py --dry-run --allow-stale-docs` on the test repo; verify all 8 (or 7 with `--no-push`) steps print without error
-7. Introduce a broken markdown link in a test doc; run `check_docs.py --since HEAD~1`; verify exit code 1 and correct link reported
-8. Run `ruff check scripts/` and verify no lint errors
+1. Copy `project.yaml.template` to a scratch repo as `project.yaml`; fill in identity fields; leave `version_sync.code_files` empty; run `stamp.py --dry-run` and verify footer HTML preview is correct
+2. Run `stamp.py`; verify sentinels wrap footer in every stamp target; run again and verify all `[=] unchanged`
+3. Add a `version_sync.code_files` entry pointing to a test file with a matching pattern; run `stamp.py` and verify the field updates; run again and verify `[=] unchanged`
+4. Create two commits with `feat:` prefix; run `bump_version.py --dry-run`; verify bump type is `minor`
+5. Run `release.py --dry-run --allow-stale-docs`; verify all steps print without error; verify step counter is correct
+6. Introduce a broken markdown link in a test doc; run `check_docs.py --since HEAD~1`; verify exit 1 and the broken link is named
+7. Open `ci.yml.tpl` and verify the TODO placeholder is present and the surrounding YAML is syntactically valid
+8. Open `CONTRIBUTING.md.tpl` and verify no language-specific install commands appear
+9. Run `ruff check scripts/`; verify no errors
 
 ---
 
 ## Rollback plan
 
 - The skill adds files only inside `_localsetup/skills/localsetup-github-repo-manager/` and updates `_localsetup/docs/SKILLS.md`
-- No changes are made to the target repo during skill creation; all repo-level changes are user-initiated by running the scripts
-- To roll back: `git revert <commit>` or `rm -rf _localsetup/skills/localsetup-github-repo-manager/` and revert the SKILLS.md entry
-- Scripts themselves are non-destructive by default; `--dry-run` is available on all write operations
+- No changes are made to the target repo during skill creation; all repo-level changes are user-initiated
+- Rollback: `git revert <commit>` or `rm -rf _localsetup/skills/localsetup-github-repo-manager/` and revert the SKILLS.md line
+- All scripts are non-destructive by default; `--dry-run` is available on every write operation
 
 ---
 
@@ -323,19 +451,19 @@ All of the following must be true before the skill is marked `done`:
 
 | Artifact | Path | Commit |
 |---|---|---|
-| Working stamp.py | `maintenance/stamp.py` | `56deced` |
-| Working bump_version.py | `maintenance/bump_version.py` | `56deced` |
-| Working check_docs.py | `maintenance/check_docs.py` | `56deced` |
-| Working release.py | `maintenance/release.py` | `56deced` |
-| Working project.yaml | `project.yaml` | `56deced` |
-| CI workflow | `.github/workflows/ci.yml` | `3e8e918` |
-| Stale workflow | `.github/workflows/stale.yml` | `3e8e918` |
-| Release notes workflow | `.github/workflows/release-notes.yml` | `3e8e918` |
-| CONTRIBUTING template | `.github/CONTRIBUTING.md` | `3e8e918` |
-| CODE_OF_CONDUCT | `.github/CODE_OF_CONDUCT.md` | `3e8e918` |
-| Bug report template | `.github/ISSUE_TEMPLATE/bug_report.md` | `3e8e918` |
-| Feature request template | `.github/ISSUE_TEMPLATE/feature_request.md` | `3e8e918` |
-| PR template | `.github/pull_request_template.md` | `3e8e918` |
+| Reference stamp.py | `maintenance/stamp.py` | `56deced` |
+| Reference bump_version.py | `maintenance/bump_version.py` | `56deced` |
+| Reference check_docs.py | `maintenance/check_docs.py` | `56deced` |
+| Reference release.py | `maintenance/release.py` | `56deced` |
+| Reference project.yaml | `project.yaml` | `56deced` |
+| CI workflow (reference) | `.github/workflows/ci.yml` | `3e8e918` |
+| Stale workflow (reference) | `.github/workflows/stale.yml` | `3e8e918` |
+| Release notes workflow (reference) | `.github/workflows/release-notes.yml` | `3e8e918` |
+| CONTRIBUTING (reference) | `.github/CONTRIBUTING.md` | `3e8e918` |
+| CODE_OF_CONDUCT (reference) | `.github/CODE_OF_CONDUCT.md` | `3e8e918` |
+| Bug report template (reference) | `.github/ISSUE_TEMPLATE/bug_report.md` | `3e8e918` |
+| Feature request template (reference) | `.github/ISSUE_TEMPLATE/feature_request.md` | `3e8e918` |
+| PR template (reference) | `.github/pull_request_template.md` | `3e8e918` |
 | Tooling policy | `_localsetup/docs/TOOLING_POLICY.md` | `56deced` |
 | Input hardening standard | `_localsetup/docs/INPUT_HARDENING_STANDARD.md` | `56deced` |
 | Agent Skills compliance | `_localsetup/docs/AGENT_SKILLS_COMPLIANCE.md` | `56deced` |
