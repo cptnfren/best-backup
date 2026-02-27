@@ -80,26 +80,40 @@ class FilesystemBackup:
             cmd += ["--exclude-from", str(exclude_file_path)]
 
         if incremental:
-            prev = self._find_previous_backup(target.name, dest.parent.parent)
+            # dest = <staging>/<run_dir>/filesystems/<name>; staging is 3 levels up
+            run_dir = dest.parent.parent
+            staging_dir = run_dir.parent
+            prev = self._find_previous_backup(target.name, staging_dir, current_run_dir=run_dir)
             if prev:
                 cmd += ["--link-dest", str(prev)]
 
         cmd += [src, str(dest) + "/"]
         return cmd
 
-    def _find_previous_backup(self, target_name: str, staging_dir: Path) -> Optional[Path]:
+    def _find_previous_backup(
+        self,
+        target_name: str,
+        staging_dir: Path,
+        current_run_dir: Optional[Path] = None,
+    ) -> Optional[Path]:
         """
         Find the most recent previous backup dir that contains this target.
 
         Scans siblings of the current run dir for backup_YYYYMMDD_HHMMSS pattern,
         sorted newest-first, returning the first that has a filesystems/name subdir.
+        Excludes current_run_dir (if provided) so a backup never links to itself.
         """
         if not staging_dir.exists():
             return None
 
         pattern = re.compile(r"^backup_\d{8}_\d{6}$")
         candidates = sorted(
-            [d for d in staging_dir.iterdir() if d.is_dir() and pattern.match(d.name)],
+            [
+                d for d in staging_dir.iterdir()
+                if d.is_dir()
+                and pattern.match(d.name)
+                and d != current_run_dir
+            ],
             key=lambda d: d.name,
             reverse=True,
         )

@@ -6,11 +6,12 @@ unit test runs (use -m integration or --all flag in scripts/run_tests.py).
 Volume names are UUID-based to prevent collision. All fixtures use
 try/except teardown to avoid orphaned Docker resources on test failure.
 Created: 2026-02-26
-Last Updated: 2026-02-26
+Last Updated: 2026-02-27
 """
 
 import io
 import json
+import os
 import uuid
 
 import pytest
@@ -207,6 +208,232 @@ def test_backup_volume_incremental_hardlinks(docker_client, alpine_rsync_image, 
             ]
             # May be 0 if --link-dest didn't actually work (rsync path complexity)
             assert isinstance(hardlinks, list)
+
+
+# ---------------------------------------------------------------------------
+# Filesystem backup / restore integration tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def seeded_fs_dir(tmp_path):
+    """Create a realistic directory tree with files and nested dirs."""
+    root = tmp_path / "source"
+    (root / "subdir").mkdir(parents=True)
+    (root / "subdir" / "nested.txt").write_text("nested content")
+    (root / "hello.txt").write_text("hello world")
+    (root / "data.log").write_text("log data")
+    (root / ".cache").mkdir()
+    (root / ".cache" / "cache_file.bin").write_bytes(b"\x00\x01\x02\x03")
+    (root / "build").mkdir()
+    (root / "build" / "artifact.o").write_bytes(b"\xff" * 16)
+    return root
+
+
+def test_filesystem_backup_basic(seeded_fs_dir, tmp_path):
+    """Real rsync: files appear verbatim in the destination directory."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    target = FilesystemTarget(
+        name="mydata",
+        path=str(seeded_fs_dir),
+        excludes=[],
+        enabled=True,
+    )
+    backup_dir = tmp_path / "backup_20260227_120000"
+
+    result = fb.backup_path(target, backup_dir)
+
+    assert result is True
+    dest = backup_dir / "filesystems" / "mydata"
+    assert (dest / "hello.txt").exists()
+    assert (dest / "hello.txt").read_text() == "hello world"
+    assert (dest / "subdir" / "nested.txt").exists()
+    assert (dest / "data.log").read_text() == "log data"
+
+
+def test_filesystem_backup_excludes_patterns(seeded_fs_dir, tmp_path):
+    """Files matching exclude patterns must not appear in the backup."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    target = FilesystemTarget(
+        name="filtered",
+        path=str(seeded_fs_dir),
+        excludes=[".cache/", "build/", "*.log"],
+        enabled=True,
+    )
+    backup_dir = tmp_path / "backup_20260227_130000"
+
+    result = fb.backup_path(target, backup_dir)
+    assert result is True
+
+    dest = backup_dir / "filesystems" / "filtered"
+    # Excluded dirs/files should be absent
+    assert not (dest / ".cache").exists()
+    assert not (dest / "build").exists()
+    assert not (dest / "data.log").exists()
+    # Non-excluded content should be present
+    assert (dest / "hello.txt").exists()
+    assert (dest / "subdir" / "nested.txt").exists()
+
+
+def test_filesystem_backup_incremental_hardlinks(seeded_fs_dir, tmp_path):
+    """Two consecutive incremental backups: unchanged files share inodes."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    target = FilesystemTarget(
+        name="docs",
+        path=str(seeded_fs_dir),
+        excludes=[],
+        enabled=True,
+    )
+
+    run1 = tmp_path / "backup_20260226_100000"
+    run2 = tmp_path / "backup_20260227_100000"
+
+    r1 = fb.backup_path(target, run1, incremental=False)
+    r2 = fb.backup_path(target, run2, incremental=True)
+
+    assert r1 is True
+    assert r2 is True
+
+    dest1 = run1 / "filesystems" / "docs"
+    dest2 = run2 / "filesystems" / "docs"
+
+    hardlinked = []
+    for f in dest2.rglob("*"):
+        if f.is_file() and f.stat().st_nlink > 1:
+            hardlinked.append(f)
+
+    assert len(hardlinked) > 0, "Expected at least one hardlinked file in incremental backup"
+
+
+def test_filesystem_backup_progress_callback(seeded_fs_dir, tmp_path):
+    """progress_callback receives non-empty lines from rsync."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    target = FilesystemTarget(
+        name="cb_test",
+        path=str(seeded_fs_dir),
+        excludes=[],
+        enabled=True,
+    )
+    backup_dir = tmp_path / "backup_20260227_140000"
+    received_lines = []
+
+    result = fb.backup_path(target, backup_dir, progress_callback=received_lines.append)
+
+    assert result is True
+    assert len(received_lines) > 0
+
+
+def test_filesystem_restore_roundtrip(seeded_fs_dir, tmp_path):
+    """Backup then restore: original file tree is reproduced at destination."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+    from bbackup.restore import DockerRestore
+    from unittest.mock import patch
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    target = FilesystemTarget(
+        name="roundtrip",
+        path=str(seeded_fs_dir),
+        excludes=[],
+        enabled=True,
+    )
+    backup_dir = tmp_path / "backup_20260227_150000"
+
+    backup_ok = fb.backup_path(target, backup_dir)
+    assert backup_ok is True, "Backup step failed, cannot test restore"
+
+    dest = tmp_path / "restored"
+
+    with patch("bbackup.restore.docker.from_env") as mock_docker:
+        mock_docker.return_value.ping.return_value = True
+        dr = DockerRestore(cfg)
+
+    result = dr.restore_filesystem_path("roundtrip", backup_dir, destination=dest)
+    assert result is True
+
+    assert (dest / "hello.txt").read_text() == "hello world"
+    assert (dest / "subdir" / "nested.txt").read_text() == "nested content"
+    # Binary files should also be restored
+    assert (dest / ".cache" / "cache_file.bin").read_bytes() == b"\x00\x01\x02\x03"
+
+
+def test_filesystem_restore_via_restore_backup(seeded_fs_dir, tmp_path):
+    """restore_backup() with filesystems param calls restore_filesystem_path correctly."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+    from bbackup.restore import DockerRestore
+    from unittest.mock import patch
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    target = FilesystemTarget(
+        name="batch_restore",
+        path=str(seeded_fs_dir),
+        excludes=[],
+        enabled=True,
+    )
+    backup_dir = tmp_path / "backup_20260227_160000"
+
+    backup_ok = fb.backup_path(target, backup_dir)
+    assert backup_ok is True, "Backup step failed"
+
+    dest = tmp_path / "restored_batch"
+
+    with patch("bbackup.restore.docker.from_env") as mock_docker:
+        mock_docker.return_value.ping.return_value = True
+        dr = DockerRestore(cfg)
+
+    results = dr.restore_backup(
+        backup_path=backup_dir,
+        filesystems=["batch_restore"],
+        filesystem_destination=dest,
+    )
+
+    assert results["filesystems"]["batch_restore"] == "success"
+    assert results["errors"] == []
+    assert (dest / "hello.txt").read_text() == "hello world"
+
+
+def test_filesystem_backup_empty_dir(tmp_path):
+    """Backing up an empty directory should succeed and create an empty dest."""
+    from bbackup.config import Config, FilesystemTarget
+    from bbackup.filesystem_backup import FilesystemBackup
+
+    cfg = Config(config_path=None)
+    fb = FilesystemBackup(cfg)
+    empty_src = tmp_path / "empty_source"
+    empty_src.mkdir()
+
+    target = FilesystemTarget(
+        name="empty",
+        path=str(empty_src),
+        excludes=[],
+        enabled=True,
+    )
+    backup_dir = tmp_path / "backup_20260227_170000"
+
+    result = fb.backup_path(target, backup_dir)
+    assert result is True
+    dest = backup_dir / "filesystems" / "empty"
+    assert dest.exists()
+    assert list(dest.iterdir()) == []
 
 
 def test_restore_volume_roundtrip(docker_client, alpine_rsync_image, seeded_volume, tmp_path, unique_id):
