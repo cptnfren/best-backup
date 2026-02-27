@@ -4,4 +4,4 @@ A comprehensive backup solution for Docker containers, volumes, and configuratio
 """
 
 __version__ = "1.1.0"
-__author__ = "Linux Tools Project"
+__author__ = "Slavic Kozyuk / Crux Experts LLC"

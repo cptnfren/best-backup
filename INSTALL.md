@@ -164,3 +164,14 @@ bbman setup
 ```
 
 See [QUICKSTART.md](QUICKSTART.md) for what to do next.
+
+<!-- project-footer:start -->
+
+<br><br>
+
+<p align="center">
+Slavic Kozyuk<br>
+&copy; 2026 <a href="https://www.cruxexperts.com/">Crux Experts LLC</a> &mdash; <a href="https://github.com/cptnfren/best-backup/blob/main/LICENSE">MIT License</a>
+</p>
+
+<!-- project-footer:end -->

@@ -1,0 +1,37 @@
+# project.yaml
+# Single source of truth for project identity.
+# Consumed by maintenance/stamp.py to sync footers, code files, and GitHub metadata.
+# Update this file, then run: python maintenance/stamp.py
+
+project:
+  name: bbackup
+  description: "Docker Backup Tool with Rich TUI"
+  repository: "https://github.com/cptnfren/best-backup"
+
+author:
+  name: "Slavic Kozyuk"
+  github: "cptnfren"
+
+company:
+  name: "Crux Experts LLC"
+  url: "https://www.cruxexperts.com/"
+
+copyright:
+  year: 2026
+  license: MIT
+
+# Markdown files that receive the centered footer.
+# Paths are relative to repo root.
+# .github/ templates are intentionally excluded - footers don't belong in issue/PR forms.
+stamp_targets:
+  - README.md
+  - QUICKSTART.md
+  - INSTALL.md
+  - CHANGELOG.md
+  - docs/README.md
+  - docs/architecture.md
+  - docs/encryption.md
+  - docs/management.md
+  - scripts/README.md
+  - .github/CONTRIBUTING.md
+  - .github/CODE_OF_CONDUCT.md

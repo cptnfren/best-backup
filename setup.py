@@ -15,7 +15,7 @@ setup(
     description="Docker Backup Tool with Rich TUI",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Linux Tools Project",
+    author="Slavic Kozyuk / Crux Experts LLC",
     url="https://github.com/cptnfren/best-backup",
     packages=find_packages(),
     keywords=[
