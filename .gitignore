@@ -36,6 +36,9 @@ ENV/
 # Cursor (IDE-local, not tracked)
 .cursor/
 
+# Localsetup framework (tooling, not part of this repo)
+_localsetup/
+
 # Testing
 .pytest_cache/
 .coverage

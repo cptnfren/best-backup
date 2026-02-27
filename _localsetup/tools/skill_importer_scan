@@ -1,7 +1,0 @@
-#!/usr/bin/env bash
-# Localsetup v2 - Scan directory for Agent Skills. Thin wrapper; logic in skill_importer_scan.py.
-set -euo pipefail
-[[ -n "${1:-}" ]] || { echo "Usage: skill_importer_scan <path>" >&2; exit 1; }
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENGINE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-exec python3 "$ENGINE_DIR/tools/skill_importer_scan.py" "$1"

@@ -1,8 +1,0 @@
-# Public skill collection registry (one URL per line).
-# The agent uses these to discover and recommend publicly available skills.
-# Lines starting with # are ignored. Add one repo or list URL per line.
-# This project's GitHub repo maintains this file; you can use your own copy
-# or download the latest from the project repo if you prefer not to maintain it.
-
-https://github.com/VoltAgent/awesome-openclaw-skills
-https://github.com/anthropics/skills/tree/main/skills
