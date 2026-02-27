@@ -71,7 +71,7 @@ Copying key files to every backup server manually is annoying. The public key ca
 
 ### Reference it in config
 
-Full URL:
+Full Gist URL:
 
 ```yaml
 encryption:
@@ -79,20 +79,34 @@ encryption:
     public_key: https://gist.githubusercontent.com/YOUR_USERNAME/YOUR_GIST_ID/raw/backup_public.pem
 ```
 
-GitHub shortcut (bbackup resolves this automatically):
+GitHub shortcuts (bbackup resolves these automatically):
 
 ```yaml
-encryption:
-  asymmetric:
-    public_key: github:YOUR_USERNAME/gist:YOUR_GIST_ID
+# Explicit gist ID
+public_key: github:YOUR_USERNAME/gist:YOUR_GIST_ID
+
+# Explicit repo
+public_key: github:YOUR_USERNAME/repo:backup-keys
+
+# Username only - auto-discovery (tries standard locations)
+public_key: github:YOUR_USERNAME
+# or the shorter alias:
+public_key: gh:YOUR_USERNAME
 ```
 
-You can also point to a file in a repo:
+When you use the username-only form, bbackup tries these four URLs in order:
 
-```yaml
-encryption:
-  asymmetric:
-    public_key: github:YOUR_USERNAME/repo:backup-keys
+```
+https://gist.githubusercontent.com/USERNAME/bbackup-keys/raw/backup_public.pem
+https://gist.githubusercontent.com/USERNAME/backup-keys/raw/backup_public.pem
+https://raw.githubusercontent.com/USERNAME/bbackup-keys/main/backup_public.pem
+https://raw.githubusercontent.com/USERNAME/backup-keys/main/backup_public.pem
+```
+
+So naming your Gist `bbackup-keys` or `backup-keys` and your key file `backup_public.pem` is all you need. Raw repo URL also works:
+
+```
+https://raw.githubusercontent.com/YOUR_USERNAME/REPO/main/backup_public.pem
 ```
 
 When a URL is used, bbackup downloads and caches the key at `~/.cache/bbackup/keys/` with permissions set to 600. If the URL is unreachable on a later run, the cached copy is used.
