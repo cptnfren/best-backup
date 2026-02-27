@@ -23,7 +23,7 @@ from .encryption import EncryptionManager
 
 
 @click.group()
-@click.version_option(version="1.0.0")
+@click.version_option(version=__import__("bbackup").__version__)
 @click.option(
     "--config",
     "-c",

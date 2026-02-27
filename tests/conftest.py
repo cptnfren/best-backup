@@ -1,97 +1,60 @@
 """
-tests/conftest.py
-Shared fixtures for the bbackup test suite.
+Shared pytest fixtures for bbackup unit tests.
+Purpose: Provide mock_docker_client, mock_subprocess, mock_requests_head, and sample_config_yaml
+         to all unit test files. No test file should re-patch these targets independently.
+Created: 2026-02-26
+Last Updated: 2026-02-26
 """
 
-import os
-import sys
-import textwrap
-import tempfile
-from pathlib import Path
-
 import pytest
-import yaml
-
-# Ensure repo root is on sys.path so maintenance/ scripts are importable
-REPO_ROOT = Path(__file__).parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-sys.path.insert(0, str(REPO_ROOT / "maintenance"))
+from unittest.mock import MagicMock, patch
 
 
 @pytest.fixture
-def tmp_repo(tmp_path):
-    """A temporary directory that looks like a minimal git repo."""
-    (tmp_path / ".git").mkdir()
-    (tmp_path / "VERSION").write_text("1.0.0\n")
-    return tmp_path
+def mock_docker_client():
+    """Patches all three docker.from_env call sites in bbackup."""
+    with patch("bbackup.docker_backup.docker.from_env") as m1, \
+         patch("bbackup.restore.docker.from_env") as m2, \
+         patch("bbackup.management.health.docker.from_env") as m3:
+        client = MagicMock()
+        client.ping.return_value = True
+        client.version.return_value = {"Version": "24.0.0"}
+        m1.return_value = client
+        m2.return_value = client
+        m3.return_value = client
+        yield client
 
 
 @pytest.fixture
-def minimal_project_yaml(tmp_path):
-    """Write a minimal project.yaml and return the path."""
-    cfg = {
-        "project": {
-            "name": "test-project",
-            "description": "Test project",
-            "repository": "https://github.com/testowner/test-project",
-        },
-        "author": {"name": "Test Author", "github": "testowner", "email": ""},
-        "company": {"name": "Test Corp", "url": "https://testcorp.example.com/"},
-        "copyright": {"year": 2026, "license": "MIT"},
-        "stamp_targets": ["README.md"],
-        "version_sync": {"code_files": []},
-        "doc_map": [],
-        "public_docs": ["README.md"],
-    }
-    config_path = tmp_path / "project.yaml"
-    config_path.write_text(yaml.dump(cfg))
-    return config_path
+def mock_subprocess():
+    """Patches subprocess.run and subprocess.Popen globally."""
+    with patch("subprocess.run") as mock_run, \
+         patch("subprocess.Popen") as mock_popen:
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+        yield mock_run, mock_popen
+
+
+@pytest.fixture
+def mock_requests_head():
+    """Patches requests.head inside bbackup.encryption for GitHub shortcut resolution."""
+    with patch("bbackup.encryption.requests.head") as mock_head:
+        mock_head.return_value = MagicMock(status_code=404)
+        yield mock_head
 
 
 @pytest.fixture
 def sample_config_yaml(tmp_path):
-    """Write a full bbackup config.yaml and return the path."""
-    content = textwrap.dedent("""\
-        backup:
-          local_staging: /tmp/bbackup_test_staging
-          default_scope:
-            containers: true
-            volumes: true
-            networks: false
-            configs: true
-          backup_sets:
-            web:
-              description: Web services
-              containers:
-                - nginx
-                - app
-              scope:
-                containers: true
-                volumes: true
-                networks: false
-                configs: true
-        retention:
-          daily: 3
-          weekly: 2
-          monthly: 6
-          max_storage_gb: 10
-          warning_threshold_percent: 75
-          cleanup_threshold_percent: 85
-          cleanup_strategy: oldest_first
-        incremental:
-          enabled: true
-          use_link_dest: true
-          min_file_size: 512000
-        encryption:
-          enabled: false
-          method: symmetric
-        remotes:
-          local_test:
-            enabled: true
-            type: local
-            path: /tmp/bbackup_test_remote
-            compression: true
-    """)
-    cfg_path = tmp_path / "config.yaml"
-    cfg_path.write_text(content)
-    return cfg_path
+    """Write a minimal valid config YAML to tmp_path and return the path."""
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text("""
+backup:
+  staging_dir: /tmp/bbackup_test
+  retention:
+    daily: 7
+    weekly: 4
+    monthly: 3
+remotes: []
+encryption:
+  enabled: false
+""")
+    return cfg

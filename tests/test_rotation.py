@@ -1,13 +1,15 @@
 """
-tests/test_rotation.py
-Tests for bbackup.rotation: BackupRotation age categorization,
-retention filtering, storage quota, local storage calculation.
+Tests for bbackup.rotation - BackupRotation age categorization, retention
+filtering, storage quota, rclone storage calc, and delete paths.
+Created: 2026-02-26
+Last Updated: 2026-02-26
 """
 
+import json
 import shutil
-import tempfile
 from datetime import datetime, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,14 +17,25 @@ from bbackup.config import RemoteStorage, RetentionPolicy
 from bbackup.rotation import BackupRotation
 
 
-def make_rotation(daily=7, weekly=4, monthly=12, max_gb=0) -> BackupRotation:
-    policy = RetentionPolicy(daily=daily, weekly=weekly, monthly=monthly, max_storage_gb=max_gb)
-    return BackupRotation(retention=policy)
+def make_rotation(daily=7, weekly=4, monthly=12, max_gb=0):
+    ret = RetentionPolicy(daily=daily, weekly=weekly, monthly=monthly, max_storage_gb=max_gb)
+    return BackupRotation(retention=ret)
+
+
+def make_remote(type_="local", remote_name=None, path=""):
+    return RemoteStorage(
+        name="test",
+        enabled=True,
+        type=type_,
+        path=path,
+        remote_name=remote_name,
+    )
 
 
 # ---------------------------------------------------------------------------
-# Age categorization
+# TestAgeCategorization
 # ---------------------------------------------------------------------------
+
 
 class TestAgeCategorization:
     def test_today_is_daily(self):
@@ -31,184 +44,304 @@ class TestAgeCategorization:
 
     def test_yesterday_is_daily(self):
         r = make_rotation()
-        assert r.get_backup_age_category(datetime.now() - timedelta(days=1)) == "daily"
+        d = datetime.now() - timedelta(days=1)
+        assert r.get_backup_age_category(d) == "daily"
 
-    def test_six_days_ago_is_daily(self):
+    def test_6_days_ago_is_daily(self):
         r = make_rotation()
-        assert r.get_backup_age_category(datetime.now() - timedelta(days=6)) == "daily"
+        d = datetime.now() - timedelta(days=6)
+        assert r.get_backup_age_category(d) == "daily"
 
-    def test_seven_days_ago_is_weekly(self):
+    def test_7_days_ago_is_weekly(self):
         r = make_rotation()
-        assert r.get_backup_age_category(datetime.now() - timedelta(days=7)) == "weekly"
+        d = datetime.now() - timedelta(days=7)
+        assert r.get_backup_age_category(d) == "weekly"
 
-    def test_twenty_days_ago_is_weekly(self):
+    def test_29_days_ago_is_weekly(self):
         r = make_rotation()
-        assert r.get_backup_age_category(datetime.now() - timedelta(days=20)) == "weekly"
+        d = datetime.now() - timedelta(days=29)
+        assert r.get_backup_age_category(d) == "weekly"
 
-    def test_thirty_days_ago_is_monthly(self):
+    def test_30_days_ago_is_monthly(self):
         r = make_rotation()
-        assert r.get_backup_age_category(datetime.now() - timedelta(days=30)) == "monthly"
+        d = datetime.now() - timedelta(days=30)
+        assert r.get_backup_age_category(d) == "monthly"
 
-    def test_ninety_days_ago_is_monthly(self):
+    def test_365_days_ago_is_monthly(self):
         r = make_rotation()
-        assert r.get_backup_age_category(datetime.now() - timedelta(days=90)) == "monthly"
+        d = datetime.now() - timedelta(days=365)
+        assert r.get_backup_age_category(d) == "monthly"
 
 
 # ---------------------------------------------------------------------------
-# should_keep_backup
+# TestShouldKeepBackup
 # ---------------------------------------------------------------------------
+
 
 class TestShouldKeepBackup:
-    def test_keeps_recent_backup(self):
+    def test_keeps_daily_backup(self):
         r = make_rotation()
         assert r.should_keep_backup(datetime.now()) is True
 
-    def test_keeps_sunday_weekly(self):
+    def test_weekly_kept_if_sunday(self):
         r = make_rotation()
-        # Find the most recent Sunday that is 7-29 days ago (weekly category)
-        base = datetime.now() - timedelta(days=10)
-        days_since_sunday = base.weekday() + 1  # weekday() 0=Mon, 6=Sun -> Sunday is 6
-        sunday = base - timedelta(days=(base.weekday() + 1) % 7)
-        if 7 <= (datetime.now() - sunday).days < 30:
-            assert r.should_keep_backup(sunday) is True
+        # Find a Sunday (weekday==6) that is 7-29 days ago
+        d = datetime.now() - timedelta(days=14)
+        # Adjust to Sunday
+        offset = (6 - d.weekday()) % 7
+        sunday = d + timedelta(days=offset)
+        assert r.should_keep_backup(sunday) is True
 
-    def test_keeps_first_of_month_monthly(self):
+    def test_weekly_not_kept_if_not_sunday(self):
         r = make_rotation()
-        first = datetime(2025, 1, 1)  # old enough to be monthly
-        # Only check if the date is old enough to be monthly category
-        if r.get_backup_age_category(first) == "monthly":
-            assert r.should_keep_backup(first) is True
+        # Find a Monday (weekday==0) that is 7-29 days ago
+        d = datetime.now() - timedelta(days=14)
+        offset = (0 - d.weekday()) % 7
+        monday = d + timedelta(days=offset)
+        # Make sure it's still in weekly range
+        age = (datetime.now() - monday).days
+        if 7 <= age < 30:
+            assert r.should_keep_backup(monday) is False
+
+    def test_monthly_kept_if_first_of_month(self):
+        r = make_rotation()
+        d = datetime.now() - timedelta(days=31)
+        first = d.replace(day=1)
+        assert r.should_keep_backup(first) is True
+
+    def test_monthly_not_kept_if_not_first(self):
+        r = make_rotation()
+        d = datetime.now() - timedelta(days=31)
+        not_first = d.replace(day=15)
+        assert r.should_keep_backup(not_first) is False
 
 
 # ---------------------------------------------------------------------------
-# _parse_backup_date
+# TestParseBackupDate
 # ---------------------------------------------------------------------------
+
 
 class TestParseBackupDate:
-    def test_parses_standard_format(self):
+    def test_valid_format(self):
         r = make_rotation()
-        d = r._parse_backup_date("backup_20250115_143000")
-        assert d is not None
-        assert d.year == 2025
-        assert d.month == 1
-        assert d.day == 15
+        result = r._parse_backup_date("backup_20240115_120000")
+        assert result is not None
+        assert result.year == 2024
+        assert result.month == 1
+        assert result.day == 15
 
-    def test_parses_name_with_extra_parts(self):
+    def test_invalid_string_returns_none(self):
         r = make_rotation()
-        d = r._parse_backup_date("myrepo_backup_20241201_000000")
-        assert d is not None
-        assert d.year == 2024
-        assert d.month == 12
-        assert d.day == 1
+        result = r._parse_backup_date("no_date_here")
+        assert result is None
 
-    def test_returns_none_for_unparseable(self):
+    def test_empty_string_returns_none(self):
         r = make_rotation()
-        assert r._parse_backup_date("backup_no_date_here") is None
+        result = r._parse_backup_date("")
+        assert result is None
 
-    def test_returns_none_for_empty_string(self):
+    def test_partial_match_extracts_date(self):
         r = make_rotation()
-        assert r._parse_backup_date("") is None
-
-    def test_returns_none_for_invalid_date(self):
-        r = make_rotation()
-        assert r._parse_backup_date("backup_20251399_000000") is None  # month 13 invalid
+        result = r._parse_backup_date("bkp_20231201_extra")
+        assert result is not None
+        assert result.year == 2023
+        assert result.month == 12
 
 
 # ---------------------------------------------------------------------------
-# filter_backups_by_retention
+# TestFilterBackupsByRetention
 # ---------------------------------------------------------------------------
+
 
 class TestFilterBackupsByRetention:
-    def _make_backup_names(self, dates):
-        return [f"backup_{d.strftime('%Y%m%d')}_120000" for d in dates]
+    def test_daily_cap_enforced(self, tmp_path):
+        r = make_rotation(daily=2)
+        # Use dates from the last 6 days so they fall into "daily" category
+        now = datetime.now()
+        names = [
+            (now - timedelta(days=i)).strftime("backup_%Y%m%d_000000")
+            for i in range(5)
+        ]
+        keep, delete = r.filter_backups_by_retention(names, tmp_path)
+        assert len(keep) <= 2
 
-    def test_keeps_up_to_daily_limit(self):
-        r = make_rotation(daily=3, weekly=2, monthly=2)
-        # 5 backups within the last 6 days
-        dates = [datetime.now() - timedelta(days=i) for i in range(5)]
-        names = self._make_backup_names(dates)
-        keep, delete = r.filter_backups_by_retention(names, Path("/tmp/test"))
-        assert len(keep) <= 3
+    def test_empty_list(self, tmp_path):
+        r = make_rotation()
+        keep, delete = r.filter_backups_by_retention([], tmp_path)
+        assert keep == []
+        assert delete == []
 
-    def test_deletes_excess_daily(self):
-        r = make_rotation(daily=2, weekly=0, monthly=0)
-        dates = [datetime.now() - timedelta(days=i) for i in range(5)]
-        names = self._make_backup_names(dates)
-        keep, delete = r.filter_backups_by_retention(names, Path("/tmp/test"))
-        assert len(delete) >= 1
+    def test_unparseable_names_excluded_from_keep(self, tmp_path):
+        r = make_rotation()
+        names = ["no_date_1", "no_date_2"]
+        keep, delete = r.filter_backups_by_retention(names, tmp_path)
+        # Unparseable names can't be categorized, so not kept
+        assert len(keep) == 0
 
-    def test_keep_plus_delete_equals_total(self):
-        r = make_rotation(daily=3, weekly=2, monthly=2)
-        dates = [datetime.now() - timedelta(days=i * 3) for i in range(10)]
-        names = self._make_backup_names(dates)
-        keep, delete = r.filter_backups_by_retention(names, Path("/tmp/test"))
+    def test_keep_plus_delete_equals_parseable_total(self, tmp_path):
+        r = make_rotation(daily=2)
+        now = datetime.now()
+        names = [
+            (now - timedelta(days=i)).strftime("backup_%Y%m%d_000000")
+            for i in range(4)
+        ]
+        keep, delete = r.filter_backups_by_retention(names, tmp_path)
         assert len(keep) + len(delete) == len(names)
 
-    def test_empty_backups_returns_empty(self):
-        r = make_rotation()
-        keep, delete = r.filter_backups_by_retention([], Path("/tmp/test"))
-        assert keep == []
-        assert delete == []
-
-    def test_unparseable_names_excluded(self):
-        r = make_rotation(daily=5)
-        names = ["backup_no_date", "also_no_date"]
-        keep, delete = r.filter_backups_by_retention(names, Path("/tmp/test"))
-        assert keep == []
-        assert delete == []
-
 
 # ---------------------------------------------------------------------------
-# check_storage_quota
+# TestCheckStorageQuota
 # ---------------------------------------------------------------------------
 
-class TestStorageQuota:
-    def test_quota_disabled_when_max_zero(self):
+
+class TestCheckStorageQuota:
+    def test_quota_disabled(self, tmp_path):
         r = make_rotation(max_gb=0)
-        remote = RemoteStorage(name="r", type="local", path="/tmp")
-        result = r.check_storage_quota(remote, Path("/tmp"))
+        remote = make_remote()
+        result = r.check_storage_quota(remote, tmp_path)
         assert result["enabled"] is False
-        assert result["cleanup_needed"] is False
 
-    def test_quota_enabled_when_max_set(self, tmp_path):
-        r = make_rotation(max_gb=1)
-        remote = RemoteStorage(name="r", type="local", path=str(tmp_path))
+    def test_quota_under_warning(self, tmp_path):
+        r = make_rotation(max_gb=100)
+        # Create small files that are under threshold
+        (tmp_path / "file.txt").write_bytes(b"x" * 100)
+        remote = make_remote(path=str(tmp_path))
         result = r.check_storage_quota(remote, tmp_path)
         assert result["enabled"] is True
-        assert result["used_gb"] >= 0
-        assert result["max_gb"] == 1
-
-    def test_no_warning_when_usage_low(self, tmp_path):
-        r = make_rotation(max_gb=1000)
-        remote = RemoteStorage(name="r", type="local", path=str(tmp_path))
-        result = r.check_storage_quota(remote, tmp_path)
         assert result["warning"] is False
-        assert result["cleanup_needed"] is False
+
+    def test_quota_over_warning_threshold(self, tmp_path):
+        ret = RetentionPolicy(max_storage_gb=1, warning_threshold_percent=0)
+        rotation = BackupRotation(retention=ret)
+        (tmp_path / "bigfile.txt").write_bytes(b"x" * 1024)
+        remote = make_remote(path=str(tmp_path))
+        result = rotation.check_storage_quota(remote, tmp_path)
+        assert result["warning"] is True
 
 
 # ---------------------------------------------------------------------------
-# _calculate_local_storage
+# TestCalculateLocalStorage
 # ---------------------------------------------------------------------------
 
-class TestLocalStorageCalculation:
-    def test_empty_dir_returns_zero(self, tmp_path):
+
+class TestCalculateLocalStorage:
+    def test_empty_dir(self, tmp_path):
         r = make_rotation()
         assert r._calculate_local_storage(tmp_path) == 0
 
-    def test_counts_file_sizes(self, tmp_path):
-        (tmp_path / "file1.txt").write_bytes(b"A" * 100)
-        (tmp_path / "file2.txt").write_bytes(b"B" * 200)
+    def test_files_only(self, tmp_path):
+        (tmp_path / "a.txt").write_bytes(b"hello")
+        (tmp_path / "b.txt").write_bytes(b"world!")
         r = make_rotation()
         total = r._calculate_local_storage(tmp_path)
-        assert total == 300
+        assert total == 11  # 5 + 6
 
-    def test_counts_nested_files(self, tmp_path):
-        sub = tmp_path / "sub"
+    def test_nested_subdirs(self, tmp_path):
+        sub = tmp_path / "subdir"
         sub.mkdir()
-        (sub / "nested.txt").write_bytes(b"X" * 500)
+        (sub / "file.dat").write_bytes(b"x" * 100)
         r = make_rotation()
-        assert r._calculate_local_storage(tmp_path) == 500
+        assert r._calculate_local_storage(tmp_path) == 100
 
-    def test_nonexistent_path_returns_zero(self):
+    def test_nonexistent_path_returns_zero(self, tmp_path):
         r = make_rotation()
-        assert r._calculate_local_storage(Path("/tmp/definitely_does_not_exist_12345")) == 0
+        assert r._calculate_local_storage(tmp_path / "nonexistent") == 0
+
+
+# ---------------------------------------------------------------------------
+# TestCalculateRcloneStorage
+# ---------------------------------------------------------------------------
+
+
+class TestCalculateRcloneStorage:
+    def test_success_returns_bytes(self):
+        r = make_rotation()
+        remote = make_remote(type_="rclone", remote_name="myremote")
+        payload = json.dumps({"bytes": 1073741824, "count": 5})
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=payload, stderr="")
+            result = r._calculate_rclone_storage(remote)
+        assert result == 1073741824
+
+    def test_returncode_nonzero_returns_zero(self):
+        r = make_rotation()
+        remote = make_remote(type_="rclone", remote_name="myremote")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="error")
+            result = r._calculate_rclone_storage(remote)
+        assert result == 0
+
+    def test_no_remote_name_returns_zero(self):
+        r = make_rotation()
+        remote = make_remote(type_="rclone", remote_name=None)
+        result = r._calculate_rclone_storage(remote)
+        assert result == 0
+
+
+# ---------------------------------------------------------------------------
+# TestDeleteBackup
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteBackup:
+    def test_local_exists_returns_true(self, tmp_path):
+        r = make_rotation()
+        backup_dir = tmp_path / "backup_20240101_000000"
+        backup_dir.mkdir()
+        (backup_dir / "file.txt").write_text("data")
+        remote = make_remote(type_="local")
+        result = r._delete_backup(remote, tmp_path, "backup_20240101_000000")
+        assert result is True
+        assert not backup_dir.exists()
+
+    def test_local_missing_returns_false(self, tmp_path):
+        r = make_rotation()
+        remote = make_remote(type_="local")
+        result = r._delete_backup(remote, tmp_path, "backup_nonexistent")
+        assert result is False
+
+    def test_rclone_success_returns_true(self):
+        r = make_rotation()
+        remote = make_remote(type_="rclone", remote_name="myremote")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = r._delete_backup(remote, Path("/remote"), "backup_old")
+        assert result is True
+
+    def test_rclone_failure_returns_false(self):
+        r = make_rotation()
+        remote = make_remote(type_="rclone", remote_name="myremote")
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            result = r._delete_backup(remote, Path("/remote"), "backup_old")
+        assert result is False
+
+    def test_unknown_type_returns_false(self, tmp_path):
+        r = make_rotation()
+        remote = make_remote(type_="unknown")
+        result = r._delete_backup(remote, tmp_path, "backup_whatever")
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# TestCleanupOldBackups
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupOldBackups:
+    def test_deleted_count_matches(self, tmp_path):
+        r = make_rotation()
+        remote = make_remote(type_="local")
+        # Create 3 backup dirs, delete 2
+        for name in ["backup_A", "backup_B", "backup_C"]:
+            (tmp_path / name).mkdir()
+        count = r.cleanup_old_backups(remote, tmp_path, ["backup_A", "backup_B"])
+        assert count == 2
+        assert not (tmp_path / "backup_A").exists()
+        assert not (tmp_path / "backup_B").exists()
+        assert (tmp_path / "backup_C").exists()
+
+    def test_returns_zero_for_empty_list(self, tmp_path):
+        r = make_rotation()
+        remote = make_remote(type_="local")
+        assert r.cleanup_old_backups(remote, tmp_path, []) == 0

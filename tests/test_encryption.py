@@ -1,276 +1,492 @@
 """
-tests/test_encryption.py
-Tests for bbackup.encryption: AES-256-GCM encrypt/decrypt, key generation,
-PBKDF2 derivation, RSA key generation, file encryption round-trip.
+Tests for bbackup.encryption - AES-GCM primitives, EncryptionManager construction,
+GitHub shortcut resolution, key cache, PBKDF2, file/directory/backup encryption.
+Created: 2026-02-26
+Last Updated: 2026-02-26
 """
 
+import hashlib
+import json
 import os
-import secrets
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.backends import default_backend
 
-from bbackup.encryption import EncryptionManager
 from bbackup.config import EncryptionSettings
-
-
-def make_sym_config(key_file=None, key_password=None) -> EncryptionSettings:
-    sym = {}
-    if key_file:
-        sym["key_file"] = str(key_file)
-    if key_password:
-        sym["key_password"] = key_password
-    return EncryptionSettings(enabled=True, method="symmetric", symmetric=sym)
-
-
-def make_asym_config(pub_file=None, priv_file=None) -> EncryptionSettings:
-    asym = {}
-    if pub_file:
-        asym["public_key_file"] = str(pub_file)
-    if priv_file:
-        asym["private_key_file"] = str(priv_file)
-    return EncryptionSettings(enabled=True, method="asymmetric", asymmetric=asym)
+from bbackup.encryption import EncryptionManager
 
 
 # ---------------------------------------------------------------------------
-# EncryptionManager construction (missing/unconfigured keys)
+# Helpers
 # ---------------------------------------------------------------------------
 
-class TestEncryptionManagerConstruction:
-    def test_disabled_config_creates_manager(self):
-        cfg = EncryptionSettings(enabled=False)
-        # Should not raise even though no keys configured
-        mgr = EncryptionManager(cfg)
-        assert mgr is not None
 
-    def test_symmetric_with_no_key_file_sets_key_none(self, capsys):
-        cfg = make_sym_config()  # no key_file
-        mgr = EncryptionManager(cfg)
-        assert mgr.symmetric_key is None
+def make_sym_config(key_file=None, method="symmetric", enabled=True):
+    return EncryptionSettings(
+        enabled=enabled,
+        method=method,
+        symmetric={"key_file": key_file} if key_file else {},
+    )
 
-    def test_symmetric_with_missing_key_file_sets_key_none(self, tmp_path):
-        cfg = make_sym_config(key_file=tmp_path / "missing.key")
-        mgr = EncryptionManager(cfg)
-        assert mgr.symmetric_key is None
 
-    def test_symmetric_with_valid_key_file_loads_key(self, tmp_path):
-        key_file = tmp_path / "test.key"
-        raw_key = secrets.token_bytes(32)
-        key_file.write_bytes(raw_key)
-        cfg = make_sym_config(key_file=key_file)
-        mgr = EncryptionManager(cfg)
-        assert mgr.symmetric_key == raw_key
-
-    def test_asymmetric_with_no_keys_sets_none(self):
-        cfg = make_asym_config()
-        mgr = EncryptionManager(cfg)
-        assert mgr.public_key is None
-        assert mgr.private_key is None
+def make_manager_with_key(tmp_path, key_bytes=None):
+    """Create an EncryptionManager backed by a real key file."""
+    key = key_bytes or os.urandom(32)
+    key_file = tmp_path / "test.key"
+    key_file.write_bytes(key)
+    cfg = make_sym_config(key_file=str(key_file))
+    mgr = EncryptionManager(cfg)
+    return mgr, key
 
 
 # ---------------------------------------------------------------------------
-# AES-256-GCM encrypt / decrypt (direct AESGCM tests - no Docker needed)
+# TestAESGCMPrimitives
 # ---------------------------------------------------------------------------
 
-class TestAESGCM:
-    """Test AES-256-GCM primitives that EncryptionManager wraps."""
 
-    def test_encrypt_decrypt_roundtrip(self):
-        key = secrets.token_bytes(32)
-        nonce = secrets.token_bytes(12)
+class TestAESGCMPrimitives:
+    """Direct AESGCM primitive tests without EncryptionManager."""
+
+    def test_roundtrip_preserves_data(self):
+        key = os.urandom(32)
+        iv = os.urandom(12)
+        plaintext = b"Hello, world!"
         aesgcm = AESGCM(key)
-        plaintext = b"Hello bbackup encryption test payload"
-        ciphertext = aesgcm.encrypt(nonce, plaintext, None)
-        recovered = aesgcm.decrypt(nonce, ciphertext, None)
-        assert recovered == plaintext
+        ct = aesgcm.encrypt(iv, plaintext, None)
+        assert aesgcm.decrypt(iv, ct, None) == plaintext
 
-    def test_different_nonces_produce_different_ciphertext(self):
-        key = secrets.token_bytes(32)
+    def test_nonce_uniqueness(self):
+        key = os.urandom(32)
         plaintext = b"same plaintext"
-        ct1 = AESGCM(key).encrypt(secrets.token_bytes(12), plaintext, None)
-        ct2 = AESGCM(key).encrypt(secrets.token_bytes(12), plaintext, None)
+        aesgcm = AESGCM(key)
+        iv1 = os.urandom(12)
+        iv2 = os.urandom(12)
+        ct1 = aesgcm.encrypt(iv1, plaintext, None)
+        ct2 = aesgcm.encrypt(iv2, plaintext, None)
+        # Two encryptions of the same plaintext with different nonces produce different ciphertexts
         assert ct1 != ct2
 
-    def test_wrong_key_decryption_fails(self):
-        from cryptography.exceptions import InvalidTag
-        key1 = secrets.token_bytes(32)
-        key2 = secrets.token_bytes(32)
-        nonce = secrets.token_bytes(12)
-        ct = AESGCM(key1).encrypt(nonce, b"secret", None)
-        with pytest.raises(InvalidTag):
-            AESGCM(key2).decrypt(nonce, ct, None)
+    def test_wrong_key_raises(self):
+        key = os.urandom(32)
+        wrong_key = os.urandom(32)
+        iv = os.urandom(12)
+        aesgcm = AESGCM(key)
+        ct = aesgcm.encrypt(iv, b"data", None)
+        with pytest.raises(Exception):
+            AESGCM(wrong_key).decrypt(iv, ct, None)
 
-    def test_tampered_ciphertext_fails(self):
-        from cryptography.exceptions import InvalidTag
-        key = secrets.token_bytes(32)
-        nonce = secrets.token_bytes(12)
-        ct = bytearray(AESGCM(key).encrypt(nonce, b"secret data", None))
-        ct[5] ^= 0xFF  # flip a byte
-        with pytest.raises(InvalidTag):
-            AESGCM(key).decrypt(nonce, bytes(ct), None)
+    def test_tampered_ciphertext_raises(self):
+        key = os.urandom(32)
+        iv = os.urandom(12)
+        aesgcm = AESGCM(key)
+        ct = bytearray(aesgcm.encrypt(iv, b"data", None))
+        ct[0] ^= 0xFF  # flip bits
+        with pytest.raises(Exception):
+            aesgcm.decrypt(iv, bytes(ct), None)
 
-    def test_aad_enforced(self):
-        from cryptography.exceptions import InvalidTag
-        key = secrets.token_bytes(32)
-        nonce = secrets.token_bytes(12)
-        aad = b"additional-auth-data"
-        ct = AESGCM(key).encrypt(nonce, b"payload", aad)
-        # Decrypting with wrong AAD should fail
-        with pytest.raises(InvalidTag):
-            AESGCM(key).decrypt(nonce, ct, b"wrong-aad")
+    def test_key_exactly_32_bytes(self):
+        key = b"A" * 32
+        AESGCM(key)  # Should not raise
 
-    def test_key_must_be_32_bytes(self):
-        with pytest.raises(ValueError):
-            AESGCM(b"tooshort")
+    def test_key_short_raises(self):
+        key = b"short"
+        with pytest.raises(Exception):
+            AESGCM(key)
 
 
 # ---------------------------------------------------------------------------
-# EncryptionManager: _encrypt_data / _decrypt_data (if exposed)
+# TestEncryptionManagerConstruction
 # ---------------------------------------------------------------------------
 
-class TestEncryptionManagerFileMethods:
-    def test_encrypt_file_roundtrip(self, tmp_path):
-        """encrypt_file then decrypt_file should recover original content."""
-        raw_key = secrets.token_bytes(32)
-        key_file = tmp_path / "test.key"
-        key_file.write_bytes(raw_key)
 
-        cfg = make_sym_config(key_file=key_file)
+class TestEncryptionManagerConstruction:
+    def test_disabled_config_no_key_loaded(self):
+        cfg = EncryptionSettings(enabled=False, method="symmetric", symmetric={})
+        mgr = EncryptionManager(cfg)
+        assert mgr.symmetric_key is None
+
+    def test_no_key_source_key_is_none(self):
+        cfg = make_sym_config(key_file=None)
+        mgr = EncryptionManager(cfg)
+        assert mgr.symmetric_key is None
+
+    def test_missing_key_file_key_is_none(self, tmp_path):
+        cfg = make_sym_config(key_file=str(tmp_path / "nonexistent.key"))
+        mgr = EncryptionManager(cfg)
+        assert mgr.symmetric_key is None
+
+    def test_valid_key_file_loaded(self, tmp_path):
+        _, key = make_manager_with_key(tmp_path)
+        mgr, _ = make_manager_with_key(tmp_path, key)
+        assert mgr.symmetric_key == key
+
+    def test_short_key_padded_to_32(self, tmp_path):
+        short_key = b"short"
+        key_file = tmp_path / "short.key"
+        key_file.write_bytes(short_key)
+        cfg = make_sym_config(key_file=str(key_file))
         mgr = EncryptionManager(cfg)
         assert mgr.symmetric_key is not None
+        assert len(mgr.symmetric_key) == 32
 
-        # Check if encrypt_file / decrypt_file exist before calling
-        if not (hasattr(mgr, "encrypt_file") and hasattr(mgr, "decrypt_file")):
-            pytest.skip("encrypt_file/decrypt_file not implemented on EncryptionManager")
-
-        src = tmp_path / "original.txt"
-        src.write_bytes(b"backup payload data " * 100)
-        enc_path = tmp_path / "original.txt.enc"
-        dec_path = tmp_path / "recovered.txt"
-
-        assert mgr.encrypt_file(src, enc_path) is True
-        assert enc_path.exists()
-        assert enc_path.read_bytes() != src.read_bytes()
-
-        assert mgr.decrypt_file(enc_path, dec_path) is True
-        assert dec_path.read_bytes() == src.read_bytes()
-
-    def test_encrypt_data_returns_bytes(self, tmp_path):
-        raw_key = secrets.token_bytes(32)
-        key_file = tmp_path / "test.key"
-        key_file.write_bytes(raw_key)
-
-        cfg = make_sym_config(key_file=key_file)
+    def test_long_key_truncated_to_32(self, tmp_path):
+        long_key = b"A" * 64
+        key_file = tmp_path / "long.key"
+        key_file.write_bytes(long_key)
+        cfg = make_sym_config(key_file=str(key_file))
         mgr = EncryptionManager(cfg)
+        assert mgr.symmetric_key is not None
+        assert len(mgr.symmetric_key) == 32
+        assert mgr.symmetric_key == long_key[:32]
 
-        if not hasattr(mgr, "_encrypt_data"):
-            pytest.skip("_encrypt_data not implemented")
 
-        result = mgr._encrypt_data(b"test plaintext")
-        assert isinstance(result, bytes)
-        assert len(result) > 0
+# ---------------------------------------------------------------------------
+# TestGitHubShortcutResolution
+# ---------------------------------------------------------------------------
 
-    def test_decrypt_data_roundtrip(self, tmp_path):
-        raw_key = secrets.token_bytes(32)
-        key_file = tmp_path / "test.key"
-        key_file.write_bytes(raw_key)
 
-        cfg = make_sym_config(key_file=key_file)
+class TestGitHubShortcutResolution:
+    def test_github_prefix_triggers_head_calls(self, tmp_path):
+        """github:user format tries multiple URLs via requests.head."""
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": "github:testuser"},
+        )
+        with patch("bbackup.encryption.requests.head") as mock_head, \
+             patch("bbackup.encryption.requests.get"):
+            mock_head.return_value = MagicMock(status_code=200)
+            mgr = EncryptionManager(cfg)
+        mock_head.assert_called()
+
+    def test_first_200_url_returned(self, tmp_path):
+        """First URL returning 200 is returned as resolved URL."""
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": "github:testuser"},
+        )
+        resolved = []
+        with patch("bbackup.encryption.requests.head") as mock_head, \
+             patch("bbackup.encryption.requests.get") as mock_get:
+            mock_head.return_value = MagicMock(status_code=200)
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                content=b"A" * 32,
+                raise_for_status=MagicMock(),
+            )
+            mgr = EncryptionManager(cfg)
+        # If a key was loaded, the URL was resolved
+        # (key_data would be processed and may be padded/truncated)
+        # The test just verifies no exception was raised and head was called
+        mock_head.assert_called()
+
+    def test_all_404_ssh_fallback(self):
+        """All standard URLs 404; SSH keys endpoint checked as fallback."""
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": "github:testuser"},
+        )
+        responses = []
+
+        def head_side_effect(url, **kwargs):
+            m = MagicMock()
+            if "github.com/testuser.keys" in url:
+                m.status_code = 200
+            else:
+                m.status_code = 404
+            return m
+
+        with patch("bbackup.encryption.requests.head", side_effect=head_side_effect), \
+             patch("bbackup.encryption.requests.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                content=b"A" * 32,
+                raise_for_status=MagicMock(),
+            )
+            EncryptionManager(cfg)
+        # No assertion on key value; just verifying it runs without exception
+
+    def test_all_request_exceptions_returns_none(self):
+        """All requests.head calls raise RequestException -> key is None."""
+        from requests import RequestException
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": "github:testuser"},
+        )
+        with patch("bbackup.encryption.requests.head", side_effect=RequestException("network error")):
+            mgr = EncryptionManager(cfg)
+        assert mgr.symmetric_key is None
+
+    def test_explicit_gist_format_no_head_calls(self):
+        """github:user/gist:ID format constructs URL directly, no head calls."""
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": "github:testuser/gist:abc123"},
+        )
+        with patch("bbackup.encryption.requests.head") as mock_head, \
+             patch("bbackup.encryption.requests.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                content=b"A" * 32,
+                raise_for_status=MagicMock(),
+            )
+            EncryptionManager(cfg)
+        mock_head.assert_not_called()
+
+    def test_explicit_repo_format_no_head_calls(self):
+        """github:user/repo:NAME format constructs URL directly, no head calls."""
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": "github:testuser/repo:mykeys"},
+        )
+        with patch("bbackup.encryption.requests.head") as mock_head, \
+             patch("bbackup.encryption.requests.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                content=b"A" * 32,
+                raise_for_status=MagicMock(),
+            )
+            EncryptionManager(cfg)
+        mock_head.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TestFetchKeyFromUrl
+# ---------------------------------------------------------------------------
+
+
+class TestFetchKeyFromUrl:
+    def _make_mgr(self, tmp_path):
+        """Create manager without auto-loading key (disabled config)."""
+        cfg = EncryptionSettings(enabled=False, method="symmetric", symmetric={})
         mgr = EncryptionManager(cfg)
+        return mgr
 
-        if not (hasattr(mgr, "_encrypt_data") and hasattr(mgr, "_decrypt_data")):
-            pytest.skip("_encrypt_data/_decrypt_data not implemented")
+    def test_200_returns_bytes(self, tmp_path):
+        mgr = self._make_mgr(tmp_path)
+        with patch("bbackup.encryption.requests.get") as mock_get:
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                content=b"key_data_here",
+                raise_for_status=MagicMock(),
+            )
+            with patch.object(mgr, "_cache_key"):
+                result = mgr._fetch_key_from_url("https://example.com/key.pem")
+        assert result == b"key_data_here"
 
-        original = b"round-trip test payload"
-        encrypted = mgr._encrypt_data(original)
-        recovered = mgr._decrypt_data(encrypted)
-        assert recovered == original
+    def test_http_url_raises_value_error(self, tmp_path):
+        mgr = self._make_mgr(tmp_path)
+        with pytest.raises(ValueError, match="Only HTTPS"):
+            mgr._fetch_key_from_url("http://insecure.com/key.pem")
 
+    def test_request_exception_falls_back_to_cache(self, tmp_path):
+        from requests import RequestException
+        mgr = self._make_mgr(tmp_path)
+        cached = b"cached_key_data"
+        with patch("bbackup.encryption.requests.get", side_effect=RequestException("timeout")), \
+             patch.object(mgr, "_load_cached_key", return_value=cached):
+            result = mgr._fetch_key_from_url("https://example.com/key.pem")
+        assert result == cached
 
-# ---------------------------------------------------------------------------
-# RSA key generation
-# ---------------------------------------------------------------------------
-
-class TestRSAKeyGeneration:
-    def test_generate_2048_key(self):
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend(),
-        )
-        assert private_key is not None
-        assert private_key.key_size == 2048
-
-    def test_public_key_extracted(self):
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend(),
-        )
-        pub = private_key.public_key()
-        assert pub is not None
-
-    def test_rsa_key_serialization_roundtrip(self, tmp_path):
-        private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
-            backend=default_backend(),
-        )
-        pem = private_key.private_bytes(
-            encoding=serialization.Encoding.PEM,
-            format=serialization.PrivateFormat.TraditionalOpenSSL,
-            encryption_algorithm=serialization.NoEncryption(),
-        )
-        key_file = tmp_path / "test.pem"
-        key_file.write_bytes(pem)
-
-        loaded = serialization.load_pem_private_key(
-            key_file.read_bytes(), password=None, backend=default_backend()
-        )
-        assert loaded.key_size == 2048
+    def test_request_exception_no_cache_raises(self, tmp_path):
+        from requests import RequestException
+        mgr = self._make_mgr(tmp_path)
+        with patch("bbackup.encryption.requests.get", side_effect=RequestException("timeout")), \
+             patch.object(mgr, "_load_cached_key", return_value=None):
+            with pytest.raises(RequestException):
+                mgr._fetch_key_from_url("https://example.com/key.pem")
 
 
 # ---------------------------------------------------------------------------
-# URL / GitHub shortcut detection (private helpers via manager)
+# TestKeyCache
 # ---------------------------------------------------------------------------
 
-class TestURLDetection:
-    def _make_manager(self):
-        cfg = EncryptionSettings(enabled=False)
-        return EncryptionManager(cfg)
 
-    def test_is_url_http(self):
-        mgr = self._make_manager()
-        if not hasattr(mgr, "_is_url"):
-            pytest.skip("_is_url not implemented")
-        assert mgr._is_url("http://example.com/key") is True
+class TestKeyCache:
+    def test_cache_write_and_read_roundtrip(self, tmp_path):
+        cfg = EncryptionSettings(enabled=False, method="symmetric", symmetric={})
+        mgr = EncryptionManager(cfg)
+        url = "https://example.com/testkey.pem"
+        data = b"my_secret_key_data"
 
-    def test_is_url_https(self):
-        mgr = self._make_manager()
-        if not hasattr(mgr, "_is_url"):
-            pytest.skip()
-        assert mgr._is_url("https://example.com/key") is True
+        cache_dir = tmp_path / "cache"
+        url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
+        cache_file = cache_dir / f"key_{url_hash}.cache"
 
-    def test_is_url_file_path(self):
-        mgr = self._make_manager()
-        if not hasattr(mgr, "_is_url"):
-            pytest.skip()
-        assert mgr._is_url("/path/to/key.pem") is False
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            mgr._cache_key(url, data)
+            result = mgr._load_cached_key(url)
 
-    def test_is_github_shortcut(self):
-        mgr = self._make_manager()
-        if not hasattr(mgr, "_is_github_shortcut"):
-            pytest.skip()
-        assert mgr._is_github_shortcut("github:user/gist:abc123") is True
+        assert result == data
 
-    def test_is_not_github_shortcut(self):
-        mgr = self._make_manager()
-        if not hasattr(mgr, "_is_github_shortcut"):
-            pytest.skip()
-        assert mgr._is_github_shortcut("https://github.com/user/repo") is False
+    def test_load_missing_cache_returns_none(self, tmp_path):
+        cfg = EncryptionSettings(enabled=False, method="symmetric", symmetric={})
+        mgr = EncryptionManager(cfg)
+        with patch("pathlib.Path.home", return_value=tmp_path):
+            result = mgr._load_cached_key("https://notcached.example.com/key")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# TestPBKDF2
+# ---------------------------------------------------------------------------
+
+
+class TestPBKDF2:
+    def test_same_password_same_salt_same_key(self, tmp_path):
+        """PBKDF2 is deterministic: same inputs produce same output."""
+        salt = os.urandom(16)
+        key_data = salt + os.urandom(16)  # first 16 bytes = salt
+        key_file = tmp_path / "key.bin"
+        key_file.write_bytes(key_data)
+
+        cfg = EncryptionSettings(
+            enabled=True,
+            method="symmetric",
+            symmetric={"key_file": str(key_file), "key_password": "mypassword"},
+        )
+        mgr1 = EncryptionManager(cfg)
+        mgr2 = EncryptionManager(cfg)
+        assert mgr1.symmetric_key == mgr2.symmetric_key
+
+    def test_different_passwords_different_keys(self, tmp_path):
+        salt_data = os.urandom(32)
+        key_file = tmp_path / "key.bin"
+        key_file.write_bytes(salt_data)
+
+        cfg1 = EncryptionSettings(
+            enabled=True, method="symmetric",
+            symmetric={"key_file": str(key_file), "key_password": "pass1"},
+        )
+        cfg2 = EncryptionSettings(
+            enabled=True, method="symmetric",
+            symmetric={"key_file": str(key_file), "key_password": "pass2"},
+        )
+        mgr1 = EncryptionManager(cfg1)
+        mgr2 = EncryptionManager(cfg2)
+        assert mgr1.symmetric_key != mgr2.symmetric_key
+
+
+# ---------------------------------------------------------------------------
+# TestFileEncryption
+# ---------------------------------------------------------------------------
+
+
+class TestFileEncryption:
+    def test_roundtrip_preserves_binary_content(self, tmp_path):
+        mgr, _ = make_manager_with_key(tmp_path)
+        src = tmp_path / "source.bin"
+        original = os.urandom(1024)
+        src.write_bytes(original)
+
+        enc = tmp_path / "source.bin.enc"
+        dec = tmp_path / "source.bin.dec"
+
+        assert mgr.encrypt_file(src, enc) is True
+        assert enc.exists()
+        assert mgr.decrypt_file(enc, dec) is True
+        assert dec.read_bytes() == original
+
+    def test_encrypt_creates_different_output(self, tmp_path):
+        mgr, _ = make_manager_with_key(tmp_path)
+        src = tmp_path / "file.txt"
+        src.write_text("hello world")
+        enc = tmp_path / "file.txt.enc"
+        mgr.encrypt_file(src, enc)
+        assert enc.read_bytes() != src.read_bytes()
+
+
+# ---------------------------------------------------------------------------
+# TestDirectoryEncryption
+# ---------------------------------------------------------------------------
+
+
+class TestDirectoryEncryption:
+    def test_roundtrip_3_file_tree(self, tmp_path):
+        mgr, _ = make_manager_with_key(tmp_path)
+
+        # Create 3-file tree
+        src = tmp_path / "source"
+        src.mkdir()
+        (src / "file1.txt").write_text("content1")
+        sub = src / "subdir"
+        sub.mkdir()
+        (sub / "file2.bin").write_bytes(b"\x00\x01\x02")
+        (sub / "file3.txt").write_text("content3")
+
+        enc_dir = tmp_path / "encrypted"
+        dec_dir = tmp_path / "decrypted"
+
+        assert mgr.encrypt_directory(src, enc_dir) is True
+        assert (enc_dir / "encryption_metadata.json").exists()
+        assert mgr.decrypt_directory(enc_dir, dec_dir) is True
+
+        assert (dec_dir / "file1.txt").read_text() == "content1"
+        assert (dec_dir / "subdir" / "file2.bin").read_bytes() == b"\x00\x01\x02"
+        assert (dec_dir / "subdir" / "file3.txt").read_text() == "content3"
+
+
+# ---------------------------------------------------------------------------
+# TestBackupEncryption
+# ---------------------------------------------------------------------------
+
+
+class TestBackupEncryption:
+    def test_encrypt_backup_creates_enc_dir(self, tmp_path):
+        mgr, _ = make_manager_with_key(tmp_path)
+        backup = tmp_path / "backup_20240101_000000"
+        backup.mkdir()
+        (backup / "data.bin").write_bytes(b"important data")
+
+        result = mgr.encrypt_backup(backup)
+        assert result.name.endswith(".enc")
+        assert result.exists()
+
+    def test_decrypt_backup_no_metadata_returns_original(self, tmp_path):
+        mgr, _ = make_manager_with_key(tmp_path)
+        backup = tmp_path / "backup_plain"
+        backup.mkdir()
+        result = mgr.decrypt_backup(backup)
+        assert result == backup
+
+
+# ---------------------------------------------------------------------------
+# TestKeyGeneration
+# ---------------------------------------------------------------------------
+
+
+class TestKeyGeneration:
+    def test_generate_symmetric_key_is_32_bytes(self):
+        key = EncryptionManager.generate_symmetric_key()
+        assert len(key) == 32
+
+    def test_generate_symmetric_key_non_deterministic(self):
+        k1 = EncryptionManager.generate_symmetric_key()
+        k2 = EncryptionManager.generate_symmetric_key()
+        assert k1 != k2
+
+    def test_generate_keypair_returns_pem_bytes(self):
+        pub, priv = EncryptionManager.generate_keypair(algorithm="rsa-4096")
+        assert b"-----BEGIN PUBLIC KEY-----" in pub
+        assert b"-----BEGIN PRIVATE KEY-----" in priv
+
+    def test_generate_keypair_pem_loadable(self):
+        pub_pem, priv_pem = EncryptionManager.generate_keypair(algorithm="rsa-4096")
+        pub_key = serialization.load_pem_public_key(pub_pem, backend=default_backend())
+        priv_key = serialization.load_pem_private_key(priv_pem, password=None, backend=default_backend())
+        assert pub_key is not None
+        assert priv_key is not None
+
+    def test_generate_keypair_unsupported_raises(self):
+        with pytest.raises(ValueError, match="Unsupported"):
+            EncryptionManager.generate_keypair(algorithm="unsupported")

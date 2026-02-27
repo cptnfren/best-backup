@@ -1,0 +1,12 @@
+FROM python:3.12-slim
+RUN apt-get update \
+    && apt-get install -y rsync docker.io \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY requirements.txt requirements-dev.txt ./
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+COPY bbackup/ bbackup/
+COPY bbackup.py setup.py ./
+RUN pip install -e .
+COPY tests/ tests/
+COPY pytest.ini ./

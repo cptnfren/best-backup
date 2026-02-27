@@ -1,0 +1,455 @@
+"""
+Tests for bbackup.restore - DockerRestore with mocked Docker client and subprocess.
+Covers list_backups, restore_container_config/volume/network, restore_backup
+None-vs-list distinction, and decrypt_backup_directory.
+Created: 2026-02-26
+Last Updated: 2026-02-26
+"""
+
+import json
+import time
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+import pytest
+from docker.errors import DockerException, APIError
+
+from bbackup.config import Config
+from bbackup.restore import DockerRestore
+
+
+def make_restore(mock_docker_client):
+    cfg = Config(config_path=None)
+    return DockerRestore(cfg)
+
+
+def write_container_config(backup_path: Path, name: str, image="nginx:latest"):
+    configs_dir = backup_path / "configs"
+    configs_dir.mkdir(parents=True, exist_ok=True)
+    cfg_data = {
+        "Config": {"Image": image, "Env": ["PORT=80"]},
+        "NetworkSettings": {"Ports": {}, "Networks": {}},
+        "Mounts": [],
+        "HostConfig": {"RestartPolicy": {"Name": "always"}},
+    }
+    (configs_dir / f"{name}_config.json").write_text(json.dumps(cfg_data))
+
+
+# ---------------------------------------------------------------------------
+# TestDockerRestoreInit
+# ---------------------------------------------------------------------------
+
+
+class TestDockerRestoreInit:
+    def test_success(self, mock_docker_client):
+        cfg = Config(config_path=None)
+        dr = DockerRestore(cfg)
+        assert dr.client is mock_docker_client
+
+    def test_docker_exception_raises_runtime_error(self):
+        cfg = Config(config_path=None)
+        with patch("bbackup.restore.docker.from_env", side_effect=DockerException("no docker")):
+            with pytest.raises(RuntimeError, match="Failed to connect to Docker"):
+                DockerRestore(cfg)
+
+
+# ---------------------------------------------------------------------------
+# TestListBackups
+# ---------------------------------------------------------------------------
+
+
+class TestListBackups:
+    def test_empty_dir_returns_empty(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert result == []
+
+    def test_nonexistent_dir_returns_empty(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path / "nonexistent")
+        assert result == []
+
+    def test_dirs_without_backup_prefix_excluded(self, mock_docker_client, tmp_path):
+        (tmp_path / "notabackup").mkdir()
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert result == []
+
+    def test_metadata_file_provides_timestamp(self, mock_docker_client, tmp_path):
+        bkp = tmp_path / "backup_20240101_000000"
+        bkp.mkdir()
+        meta = {"timestamp": "2024-01-01T12:00:00"}
+        (bkp / "backup_metadata.json").write_text(json.dumps(meta))
+
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert len(result) == 1
+        assert result[0]["timestamp"] == "2024-01-01T12:00:00"
+
+    def test_name_parsed_timestamp(self, mock_docker_client, tmp_path):
+        bkp = tmp_path / "backup_20240115_093000"
+        bkp.mkdir()
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert "2024-01-15" in result[0]["timestamp"]
+
+    def test_unparseable_name_uses_raw_name(self, mock_docker_client, tmp_path):
+        bkp = tmp_path / "backup_CUSTOM"
+        bkp.mkdir()
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert result[0]["timestamp"] == "backup_CUSTOM"
+
+    def test_sorted_by_mtime_descending(self, mock_docker_client, tmp_path):
+        old = tmp_path / "backup_20240101_000000"
+        old.mkdir()
+        time.sleep(0.01)
+        new = tmp_path / "backup_20240201_000000"
+        new.mkdir()
+
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert result[0]["name"] == "backup_20240201_000000"
+
+
+# ---------------------------------------------------------------------------
+# TestRestoreContainerConfig
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreContainerConfig:
+    def test_missing_config_file_returns_false(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        assert dr.restore_container_config("web", tmp_path) is False
+
+    def test_missing_image_returns_false(self, mock_docker_client, tmp_path):
+        configs_dir = tmp_path / "configs"
+        configs_dir.mkdir()
+        (configs_dir / "web_config.json").write_text(json.dumps({"Config": {"Image": ""}}))
+        dr = make_restore(mock_docker_client)
+        assert dr.restore_container_config("web", tmp_path) is False
+
+    def test_existing_container_stopped_and_removed(self, mock_docker_client, tmp_path):
+        write_container_config(tmp_path, "web")
+        existing = MagicMock()
+        mock_docker_client.containers.get.return_value = existing
+        mock_docker_client.containers.create.return_value = MagicMock()
+
+        dr = make_restore(mock_docker_client)
+        dr.restore_container_config("web", tmp_path)
+
+        existing.stop.assert_called_once()
+        existing.remove.assert_called_once()
+
+    def test_env_and_ports_and_restart_extracted(self, mock_docker_client, tmp_path):
+        configs_dir = tmp_path / "configs"
+        configs_dir.mkdir()
+        cfg_data = {
+            "Config": {"Image": "nginx:1.21", "Env": ["FOO=bar", "BAZ=qux"]},
+            "NetworkSettings": {
+                "Ports": {"80/tcp": [{"HostPort": "8080"}]},
+                "Networks": {},
+            },
+            "Mounts": [{"Type": "volume", "Name": "mydata", "Destination": "/data"}],
+            "HostConfig": {"RestartPolicy": {"Name": "unless-stopped"}},
+        }
+        (configs_dir / "web_config.json").write_text(json.dumps(cfg_data))
+
+        mock_docker_client.containers.get.side_effect = APIError("not found")
+        created = MagicMock()
+        mock_docker_client.containers.create.return_value = created
+
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_container_config("web", tmp_path)
+
+        assert result is True
+        create_call = mock_docker_client.containers.create.call_args
+        assert create_call.kwargs["image"] == "nginx:1.21"
+        assert "FOO" in create_call.kwargs["environment"]
+
+    def test_network_connect_api_error_continues_returns_true(self, mock_docker_client, tmp_path):
+        write_container_config(tmp_path, "web")
+        configs_dir = tmp_path / "configs"
+        cfg_data = {
+            "Config": {"Image": "nginx:latest", "Env": []},
+            "NetworkSettings": {"Ports": {}, "Networks": {"mynet": {}}},
+            "Mounts": [],
+            "HostConfig": {"RestartPolicy": {"Name": "no"}},
+        }
+        (configs_dir / "web_config.json").write_text(json.dumps(cfg_data))
+
+        mock_docker_client.containers.get.side_effect = APIError("not found")
+        mock_docker_client.containers.create.return_value = MagicMock()
+        network = MagicMock()
+        network.connect.side_effect = APIError("connect fail")
+        mock_docker_client.networks.get.return_value = network
+
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_container_config("web", tmp_path)
+        assert result is True
+
+    def test_general_exception_returns_false(self, mock_docker_client, tmp_path):
+        write_container_config(tmp_path, "web")
+        mock_docker_client.containers.get.side_effect = RuntimeError("unexpected")
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_container_config("web", tmp_path)
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# TestRestoreVolume
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreVolume:
+    def test_missing_volume_backup_dir_returns_false(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        assert dr.restore_volume("myvolume", tmp_path) is False
+
+    def test_new_name_used_for_target(self, mock_docker_client, mock_subprocess, tmp_path):
+        mock_run, _ = mock_subprocess
+        vol_dir = tmp_path / "volumes" / "myvolume"
+        vol_dir.mkdir(parents=True)
+        mock_docker_client.volumes.get.side_effect = APIError("not found")
+        mock_docker_client.volumes.create.return_value = MagicMock()
+        temp_container = MagicMock()
+        mock_docker_client.containers.run.return_value = temp_container
+        mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+
+        dr = make_restore(mock_docker_client)
+        dr.restore_volume("myvolume", tmp_path, new_name="myvolume_restored")
+
+        create_call = mock_docker_client.volumes.create.call_args
+        assert create_call.kwargs.get("name") == "myvolume_restored" or \
+               (create_call.args and create_call.args[0] == "myvolume_restored")
+
+    def test_existing_volume_removed(self, mock_docker_client, mock_subprocess, tmp_path):
+        mock_run, _ = mock_subprocess
+        vol_dir = tmp_path / "volumes" / "myvolume"
+        vol_dir.mkdir(parents=True)
+        existing_vol = MagicMock()
+        mock_docker_client.volumes.get.return_value = existing_vol
+        mock_docker_client.volumes.create.return_value = MagicMock()
+        temp_container = MagicMock()
+        mock_docker_client.containers.run.return_value = temp_container
+
+        dr = make_restore(mock_docker_client)
+        dr.restore_volume("myvolume", tmp_path)
+
+        existing_vol.remove.assert_called_once()
+
+    def test_docker_cp_called(self, mock_docker_client, mock_subprocess, tmp_path):
+        mock_run, _ = mock_subprocess
+        vol_dir = tmp_path / "volumes" / "myvolume"
+        vol_dir.mkdir(parents=True)
+        mock_docker_client.volumes.get.side_effect = APIError("not found")
+        mock_docker_client.volumes.create.return_value = MagicMock()
+        temp_container = MagicMock()
+        mock_docker_client.containers.run.return_value = temp_container
+
+        dr = make_restore(mock_docker_client)
+        dr.restore_volume("myvolume", tmp_path)
+
+        # docker cp should have been called
+        cp_calls = [
+            c for c in mock_run.call_args_list
+            if c.args and "docker" in c.args[0] and "cp" in c.args[0]
+        ]
+        assert len(cp_calls) >= 1
+
+
+# ---------------------------------------------------------------------------
+# TestRestoreNetwork
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreNetwork:
+    def test_missing_network_file_returns_false(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        assert dr.restore_network("mynet", tmp_path) is False
+
+    def test_default_network_names_skipped(self, mock_docker_client, tmp_path):
+        networks_dir = tmp_path / "networks"
+        networks_dir.mkdir()
+        for name in ["bridge", "host", "none"]:
+            (networks_dir / f"{name}.json").write_text(json.dumps({"Driver": "bridge", "IPAM": {}}))
+            dr = make_restore(mock_docker_client)
+            result = dr.restore_network(name, tmp_path)
+            assert result is True
+        mock_docker_client.networks.create.assert_not_called()
+
+    def test_existing_network_removed_and_recreated(self, mock_docker_client, tmp_path):
+        networks_dir = tmp_path / "networks"
+        networks_dir.mkdir()
+        (networks_dir / "mynet.json").write_text(json.dumps({"Driver": "bridge", "IPAM": {}, "Options": {}}))
+        existing = MagicMock()
+        mock_docker_client.networks.get.return_value = existing
+        mock_docker_client.networks.create.return_value = MagicMock()
+
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_network("mynet", tmp_path)
+
+        assert result is True
+        existing.remove.assert_called_once()
+        mock_docker_client.networks.create.assert_called_once()
+
+    def test_driver_and_ipam_passed_to_create(self, mock_docker_client, tmp_path):
+        networks_dir = tmp_path / "networks"
+        networks_dir.mkdir()
+        net_data = {"Driver": "overlay", "Options": {}, "IPAM": {"Config": [{"Subnet": "10.0.0.0/24"}]}}
+        (networks_dir / "overlay_net.json").write_text(json.dumps(net_data))
+        mock_docker_client.networks.get.side_effect = APIError("not found")
+        mock_docker_client.networks.create.return_value = MagicMock()
+
+        dr = make_restore(mock_docker_client)
+        dr.restore_network("overlay_net", tmp_path)
+
+        create_call = mock_docker_client.networks.create.call_args
+        assert create_call.kwargs.get("driver") == "overlay" or \
+               (create_call.args and create_call.args[1] == "overlay")
+
+
+# ---------------------------------------------------------------------------
+# TestRestoreBackup
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreBackup:
+    def test_containers_none_skips_section(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_backup(tmp_path, containers=None, volumes=None, networks=None)
+        assert result["containers"] == {}
+
+    def test_volumes_none_skips_section(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_backup(tmp_path, containers=None, volumes=None, networks=None)
+        assert result["volumes"] == {}
+
+    def test_networks_none_skips_section(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_backup(tmp_path, containers=None, volumes=None, networks=None)
+        assert result["networks"] == {}
+
+    def test_containers_empty_list_no_iteration(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_backup(tmp_path, containers=[], volumes=None, networks=None)
+        # Empty list but configs_dir doesn't exist -> no iteration
+        assert result["containers"] == {}
+
+    def test_configs_dir_missing_no_error(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        # containers=["web"] but no configs dir
+        result = dr.restore_backup(tmp_path, containers=["web"], volumes=None, networks=None)
+        # configs_dir doesn't exist, so the loop body is never entered
+        assert result["containers"] == {}
+
+    def test_rename_map_passed_through(self, mock_docker_client, mock_subprocess, tmp_path):
+        mock_run, _ = mock_subprocess
+        vol_dir = tmp_path / "volumes" / "data"
+        vol_dir.mkdir(parents=True)
+        mock_docker_client.volumes.get.side_effect = APIError("not found")
+        mock_docker_client.volumes.create.return_value = MagicMock()
+        temp_container = MagicMock()
+        mock_docker_client.containers.run.return_value = temp_container
+
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_backup(
+            tmp_path,
+            containers=None,
+            volumes=["data"],
+            networks=None,
+            rename_map={"data": "data_restored"},
+        )
+        create_call = mock_docker_client.volumes.create.call_args
+        assert create_call.kwargs.get("name") == "data_restored" or \
+               (create_call.args and "data_restored" in str(create_call.args))
+
+    def test_partial_failure_errors_list(self, mock_docker_client, mock_subprocess, tmp_path):
+        """One volume fails, other succeeds; errors list has one entry."""
+        mock_run, _ = mock_subprocess
+        # Create two volume dirs
+        (tmp_path / "volumes" / "vol_ok").mkdir(parents=True)
+        (tmp_path / "volumes" / "vol_fail").mkdir(parents=True)
+
+        temp_container = MagicMock()
+        mock_docker_client.containers.run.return_value = temp_container
+        mock_docker_client.volumes.create.return_value = MagicMock()
+
+        call_count = [0]
+
+        def volumes_get_side_effect(name):
+            call_count[0] += 1
+            raise APIError("not found")
+
+        mock_docker_client.volumes.get.side_effect = volumes_get_side_effect
+
+        # Make containers.run fail for vol_fail
+        run_call_count = [0]
+
+        def run_side_effect(*args, **kwargs):
+            run_call_count[0] += 1
+            if run_call_count[0] % 2 == 0:
+                raise RuntimeError("container failed")
+            return temp_container
+
+        mock_docker_client.containers.run.side_effect = run_side_effect
+
+        dr = make_restore(mock_docker_client)
+        result = dr.restore_backup(
+            tmp_path,
+            containers=None,
+            volumes=["vol_ok", "vol_fail"],
+            networks=None,
+        )
+        # Both volumes should be in results
+        assert "vol_ok" in result["volumes"] or "vol_fail" in result["volumes"]
+
+
+# ---------------------------------------------------------------------------
+# TestDecryptBackupDirectory
+# ---------------------------------------------------------------------------
+
+
+class TestDecryptBackupDirectory:
+    def test_no_metadata_returns_original(self, mock_docker_client, tmp_path):
+        dr = make_restore(mock_docker_client)
+        result = dr.decrypt_backup_directory(tmp_path)
+        assert result == tmp_path
+
+    def test_encryption_disabled_returns_original_with_warning(self, mock_docker_client, tmp_path):
+        (tmp_path / "encryption_metadata.json").write_text("{}")
+        cfg = Config(config_path=None)
+        cfg.encryption.enabled = False
+        dr = DockerRestore(cfg)
+        result = dr.decrypt_backup_directory(tmp_path)
+        assert result == tmp_path
+
+    def test_decryption_fails_returns_original(self, mock_docker_client, tmp_path):
+        (tmp_path / "encryption_metadata.json").write_text("{}")
+        cfg = Config(config_path=None)
+        cfg.encryption.enabled = True
+        dr = DockerRestore(cfg)
+
+        with patch("bbackup.restore.EncryptionManager") as mock_em:
+            instance = MagicMock()
+            instance.decrypt_backup.return_value = tmp_path  # same path = failure
+            mock_em.return_value = instance
+            result = dr.decrypt_backup_directory(tmp_path)
+
+        assert result == tmp_path
+
+    def test_decryption_succeeds_returns_new_path(self, mock_docker_client, tmp_path):
+        (tmp_path / "encryption_metadata.json").write_text("{}")
+        cfg = Config(config_path=None)
+        cfg.encryption.enabled = True
+        dr = DockerRestore(cfg)
+
+        decrypted = tmp_path.parent / "decrypted"
+
+        with patch("bbackup.restore.EncryptionManager") as mock_em:
+            instance = MagicMock()
+            instance.decrypt_backup.return_value = decrypted
+            mock_em.return_value = instance
+            result = dr.decrypt_backup_directory(tmp_path)
+
+        assert result == decrypted

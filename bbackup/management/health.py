@@ -230,7 +230,7 @@ def generate_health_report(results: Dict) -> str:
     report.append("=" * 50)
     report.append("")
     
-    for check_name, (ok, msg) in [
+    for check_name, result in [
         ("Docker Daemon", results["docker"]),
         ("Docker Socket", results["docker_socket"]),
         ("rsync", results["rsync"]),
@@ -238,6 +238,12 @@ def generate_health_report(results: Dict) -> str:
         ("Python Packages", results["python_packages"]),
         ("Config File", results["config"]),
     ]:
+        ok = result[0]
+        if check_name == "Python Packages":
+            _, installed, missing = result
+            msg = f"All installed ({len(installed)})" if ok else f"Missing: {', '.join(missing)}"
+        else:
+            msg = result[1]
         status = "✓" if ok else "✗"
         report.append(f"{status} {check_name}: {msg}")
     

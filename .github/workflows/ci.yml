@@ -44,3 +44,51 @@ jobs:
           python -c "from bbackup.encryption import EncryptionManager; print('encryption OK')"
           python -c "from bbackup.remote import RemoteStorage; print('remote OK')"
           python -c "from bbackup.rotation import BackupRotation; print('rotation OK')"
+
+  test:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    needs: lint-and-check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt && pip install -e .
+
+      - name: Run unit tests with coverage
+        run: pytest tests/ -m "not integration" --cov=bbackup --cov-report=xml --cov-report=term-missing
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ matrix.python-version }}
+          path: coverage.xml
+
+  integration-test:
+    name: Integration tests
+    needs: test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt && pip install -e .
+
+      - name: Run integration tests
+        run: pytest tests/integration/ -m integration -v --tb=short

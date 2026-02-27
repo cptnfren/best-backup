@@ -186,8 +186,9 @@ class BackupRunner:
                             self.status.update(
                                 bytes_transferred=bytes_transferred,
                                 total_bytes=total_bytes if total_bytes > 0 else None,
-                                transfer_speed=speed_mb
                             )
+                            # transfer_speed is not a kwarg of update(); set directly
+                            self.status.transfer_speed = speed_mb
                         except (ValueError, ZeroDivisionError):
                             pass
                     

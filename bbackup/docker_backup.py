@@ -5,6 +5,7 @@ Handles backing up containers, volumes, networks, and metadata.
 
 import os
 import json
+import shutil
 import subprocess
 import tarfile
 from pathlib import Path
@@ -230,8 +231,7 @@ class DockerBackup:
                             ["docker", "cp", f"{temp_container_name}:/tmp/volume_backup.tar.gz", str(temp_tar)],
                             check=False,
                         )
-                        # Extract tar
-                        import tarfile
+                        # Extract tar (tarfile imported at module level)
                         with tarfile.open(temp_tar, "r:gz") as tar:
                             tar.extractall(volume_backup_dir)
                         temp_tar.unlink()
@@ -265,7 +265,6 @@ class DockerBackup:
                         tar.add(volume_backup_dir, arcname=volume_name)
                     
                     # Remove uncompressed directory
-                    import shutil
                     shutil.rmtree(volume_backup_dir)
                 
                 return True
