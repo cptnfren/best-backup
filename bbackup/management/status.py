@@ -2,7 +2,6 @@
 Backup status and history management.
 """
 
-import os
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional
@@ -91,13 +90,13 @@ def display_backup_status(config: Optional[Config] = None):
     backups = list_local_backups(config)
     stats = get_backup_statistics(config)
     
-    console.print(f"\n[bold cyan]Backup Status[/bold cyan]")
+    console.print("\n[bold cyan]Backup Status[/bold cyan]")
     console.print(f"Total backups: {stats['total_backups']}")
     console.print(f"Total size: {stats['total_size'] / (1024*1024):.2f} MB")
     console.print(f"Encrypted: {stats['encrypted_backups']}")
     
     if backups:
-        console.print(f"\n[bold]Recent Backups:[/bold]")
+        console.print("\n[bold]Recent Backups:[/bold]")
         table = Table(show_header=True, header_style="bold cyan", box=box.SIMPLE)
         table.add_column("Name")
         table.add_column("Date")

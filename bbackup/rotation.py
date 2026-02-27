@@ -3,10 +3,9 @@ Backup rotation and retention management.
 Handles time-based retention and storage quota management.
 """
 
-import os
 from pathlib import Path
 from typing import List, Dict, Optional
-from datetime import datetime, timedelta
+from datetime import datetime
 from rich.console import Console
 
 from .config import RetentionPolicy, RemoteStorage

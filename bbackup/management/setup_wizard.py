@@ -4,7 +4,6 @@ Interactive setup wizard for first-time configuration.
 
 import subprocess
 import sys
-from pathlib import Path
 from typing import List, Tuple
 
 from rich.console import Console
@@ -13,7 +12,6 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from .first_run import mark_first_run_complete, get_config_file
-from ..config import Config
 
 
 console = Console()
@@ -111,7 +109,7 @@ def run_setup_wizard() -> bool:
     if rclone_ok:
         console.print(f"[green]✓ {rclone_msg}[/green]")
     else:
-        console.print(f"[dim]ℹ rclone not found (optional for Google Drive support)[/dim]")
+        console.print("[dim]ℹ rclone not found (optional for Google Drive support)[/dim]")
     
     # Step 3: Check Python packages
     console.print("\n[bold]Step 3: Checking Python packages...[/bold]")
@@ -145,7 +143,6 @@ def run_setup_wizard() -> bool:
         else:
             # Initialize config
             try:
-                from ..cli import init_config
                 # Call init_config via subprocess to avoid import issues
                 subprocess.run(
                     [sys.executable, "-m", "bbackup.cli", "init-config"],

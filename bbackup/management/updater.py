@@ -4,14 +4,12 @@ File-level update mechanism with checksum verification.
 
 import shutil
 import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, List, Optional
 import requests
-import base64
 
 from .repo import get_repo_url, parse_repo_url
-from .version import compute_file_checksum, check_for_updates
+from .version import check_for_updates
 
 
 def backup_repository(repo_root: Path, backup_dir: Path) -> bool:

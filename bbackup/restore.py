@@ -6,7 +6,6 @@ Handles restoring containers, volumes, networks, and metadata from backups.
 import os
 import json
 import subprocess
-import tarfile
 from pathlib import Path
 from typing import List, Dict, Optional
 from datetime import datetime
@@ -48,7 +47,7 @@ class DockerRestore:
                         with open(metadata_file, 'r') as f:
                             metadata = json.load(f)
                             timestamp = metadata.get("timestamp")
-                    except:
+                    except Exception:
                         pass
                 
                 # Parse timestamp from name if metadata not available
@@ -57,7 +56,7 @@ class DockerRestore:
                         # backup_YYYYMMDD_HHMMSS
                         name_part = backup_path.name.replace("backup_", "")
                         timestamp = datetime.strptime(name_part, "%Y%m%d_%H%M%S").isoformat()
-                    except:
+                    except Exception:
                         timestamp = backup_path.name
                 
                 backups.append({
@@ -145,7 +144,7 @@ class DockerRestore:
                     pass  # Network might not exist
             
             return True
-        except Exception as e:
+        except Exception:
             return False
     
     def restore_volume(self, volume_name: str, backup_path: Path, new_name: Optional[str] = None) -> bool:
@@ -165,7 +164,7 @@ class DockerRestore:
                 pass  # Volume doesn't exist
             
             # Create new volume
-            volume = self.client.volumes.create(name=target_volume_name)
+            self.client.volumes.create(name=target_volume_name)
             
             # Use temporary container to restore volume data
             temp_container_name = f"bbackup_restore_{target_volume_name}_{os.getpid()}"
@@ -195,13 +194,13 @@ class DockerRestore:
                 temp_container.remove()
                 
                 return True
-            except Exception as e:
+            except Exception:
                 # Cleanup on error
                 try:
                     temp_container = self.client.containers.get(temp_container_name)
                     temp_container.stop()
                     temp_container.remove()
-                except:
+                except Exception:
                     pass
                 return False
                 

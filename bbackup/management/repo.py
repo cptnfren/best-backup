@@ -9,7 +9,6 @@ The default URL is a placeholder. Set the actual repo URL via:
 
 import os
 from pathlib import Path
-from typing import Optional
 import yaml
 
 # Placeholder default: override via BBACKUP_REPO_URL env var, management config,

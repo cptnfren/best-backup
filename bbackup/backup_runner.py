@@ -4,7 +4,7 @@ Backup runner with status tracking for live TUI updates.
 
 import time
 from pathlib import Path
-from typing import List, Optional, Callable
+from typing import List, Optional
 from .config import Config, BackupScope
 from .docker_backup import DockerBackup
 from .remote import RemoteStorageManager

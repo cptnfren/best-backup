@@ -7,7 +7,7 @@ import os
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 from rich.console import Console
 
 from .config import RemoteStorage, Config

@@ -6,8 +6,7 @@ Provides BTOP-like graphical interface for backup operations with live updates.
 import time
 import threading
 from typing import List, Dict, Optional, Set, Callable
-from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import timedelta
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -17,12 +16,8 @@ from rich.progress import (
 )
 from rich.layout import Layout
 from rich.live import Live
-from rich.text import Text
 from rich.prompt import Confirm, Prompt
-from rich.align import Align
 from rich import box
-from rich.live import Live
-from rich.console import Group
 
 from .config import Config, BackupSet
 
@@ -272,7 +267,7 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
             total = self.status.total_items if self.status.total_items > 0 else None
             completed = self.status.completed_items
         
-        task = progress_bar.add_task(
+        progress_bar.add_task(
             self.status.current_action[:50] if self.status.current_action else "Processing...",
             total=total,
             completed=completed,
@@ -281,16 +276,6 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
         layout["progress"].update(
             Panel(progress_bar, title="Progress", border_style="blue", box=box.ROUNDED)
         )
-        
-        # Encryption status
-        encryption_info = ""
-        if hasattr(self.status, 'encryption_status'):
-            if self.status.encryption_status == "encrypting":
-                encryption_info = "[yellow]🔒 Encrypting backup...[/yellow]"
-            elif self.status.encryption_status == "encrypted":
-                encryption_info = "[green]🔒 Backup encrypted[/green]"
-            elif self.status.encryption_status == "failed":
-                encryption_info = "[red]🔒 Encryption failed[/red]"
         
         # Containers panel with enhanced info
         containers_table = Table(show_header=True, box=box.SIMPLE, show_edge=False)

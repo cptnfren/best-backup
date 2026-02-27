@@ -109,7 +109,7 @@ class DockerBackup:
         """Backup Docker volume using Docker container and rsync."""
         logger.info(f"Backing up volume: {volume_name} (incremental={incremental})")
         try:
-            volume = self.client.volumes.get(volume_name)
+            self.client.volumes.get(volume_name)
             volume_backup_dir = backup_dir / "volumes" / volume_name
             volume_backup_dir.mkdir(parents=True, exist_ok=True)
             
@@ -360,7 +360,7 @@ class DockerBackup:
                 os.unlink(temp_meta)
             
             return True
-        except Exception as e:
+        except Exception:
             return False
     
     def create_backup(

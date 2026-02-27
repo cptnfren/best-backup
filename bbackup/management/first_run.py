@@ -2,7 +2,6 @@
 First-run detection and marker file management.
 """
 
-import os
 from pathlib import Path
 
 

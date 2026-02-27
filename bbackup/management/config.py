@@ -2,9 +2,7 @@
 Management configuration file handling.
 """
 
-import os
-from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 import yaml
 
 from .utils import get_management_config_path

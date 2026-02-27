@@ -4,14 +4,12 @@ Comprehensive health check system.
 
 import os
 import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, List, Tuple
 import docker
 
 from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
 
 from ..config import Config
 
@@ -104,7 +102,7 @@ def check_config_file() -> Tuple[bool, str]:
         return False, "Config file not found"
     
     try:
-        config = Config(config_path=str(config_path))
+        Config(config_path=str(config_path))
         return True, f"Config file valid: {config_path}"
     except Exception as e:
         return False, f"Config file invalid: {e}"

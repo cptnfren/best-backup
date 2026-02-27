@@ -2,10 +2,9 @@
 Cleanup operations for old files and backups.
 """
 
-import os
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional
+from typing import Dict, Optional
 
 from rich.console import Console
 from rich.prompt import Confirm
@@ -133,7 +132,7 @@ def cleanup_old_backups(config: Optional[Config] = None) -> Dict:
             staging_dir
         )
         to_remove = [staging_dir / name for name in to_delete_names]
-    except (AttributeError, TypeError) as e:
+    except (AttributeError, TypeError):
         # Fallback: if API is broken, use simple date-based filtering
         from datetime import datetime, timedelta
         cutoff_date = datetime.now() - timedelta(days=config.retention.daily)

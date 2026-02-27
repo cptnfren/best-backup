@@ -2,9 +2,7 @@
 Diagnostics and system information reporting.
 """
 
-import os
 import platform
-import subprocess
 import sys
 from pathlib import Path
 from datetime import datetime

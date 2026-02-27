@@ -8,7 +8,7 @@ import os
 import hashlib
 import json
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any
+from typing import Optional, Tuple, Any
 from datetime import datetime
 import requests
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -16,7 +16,6 @@ from cryptography.hazmat.primitives.asymmetric import rsa, padding
 from cryptography.hazmat.primitives import serialization, hashes
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.backends import default_backend
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 import secrets
 
 from .logging import get_logger
@@ -253,7 +252,7 @@ class EncryptionManager:
         
         # Strategy 3: Fallback to SSH keys (inform user they need to convert)
         logger.warning(f"Could not find standard key locations for {username}")
-        logger.info(f"Trying SSH keys endpoint as fallback...")
+        logger.info("Trying SSH keys endpoint as fallback...")
         ssh_keys_url = f"https://github.com/{username}.keys"
         
         try:
@@ -268,8 +267,8 @@ class EncryptionManager:
         
         logger.error(f"Could not resolve GitHub shortcut: {shortcut}")
         logger.info("Suggestions:")
-        logger.info(f"  1. Create a gist named 'bbackup-keys' with your public key")
-        logger.info(f"  2. Create a repo named 'bbackup-keys' with backup_public.pem")
+        logger.info("  1. Create a gist named 'bbackup-keys' with your public key")
+        logger.info("  2. Create a repo named 'bbackup-keys' with backup_public.pem")
         logger.info(f"  3. Use explicit format: github:{username}/gist:GIST_ID")
         logger.info(f"  4. Use explicit format: github:{username}/repo:REPO_NAME")
         

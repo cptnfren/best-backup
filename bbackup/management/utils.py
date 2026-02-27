@@ -3,7 +3,6 @@ Utility functions for management module.
 """
 
 from pathlib import Path
-from typing import Optional
 
 
 def get_data_dir() -> Path:

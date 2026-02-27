@@ -29,6 +29,7 @@ __all__ = [
     "set_repo_url",
     "parse_repo_url",
     "check_for_updates",
+    "compute_local_checksums",
     "run_health_check",
     "check_and_install_dependencies",
     "load_management_config",
