@@ -69,9 +69,9 @@ Reads and writes `BackupStatus` throughout so the TUI stays current.
 Backs up arbitrary host filesystem paths and directory trees using rsync directly (no Docker). Key behaviors:
 
 - Source path is rsynced to `backup_dir/filesystems/<target_name>/`
-- Exclude patterns are written to a temp file and passed via `--exclude-from`; the temp file is always deleted in a `finally` block
-- Incremental mode uses `--link-dest` pointing at the matching target in the previous `backup_YYYYMMDD_HHMMSS` directory
-- Progress output is streamed to the caller's callback for live TUI updates
+- Exclude patterns are written to a temp file and passed via `--exclude-from`; the temp file is always deleted in a `finally` block regardless of success or failure
+- Incremental mode uses `--link-dest` pointing at the most recent previous `backup_YYYYMMDD_HHMMSS` sibling directory that contains the same target name. The current run directory is always excluded from the scan so a backup never links to itself
+- Progress output is streamed line-by-line to the caller's callback for live TUI updates
 
 ### `bbackup/restore.py`
 

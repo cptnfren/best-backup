@@ -20,8 +20,9 @@ Run `bbackup backup` and you get an interactive container picker, a live BTOP-st
 | ✅ Encryption | AES-256-GCM (symmetric) or RSA-4096 (asymmetric) at rest |
 | ✅ Remote storage | Google Drive via rclone, SFTP, or local directory |
 | ✅ Rotation | Time-based daily/weekly/monthly retention with quota enforcement |
-| ✅ Full restore | Containers, volumes, and networks, with optional rename on restore |
+| ✅ Full restore | Containers, volumes, networks, and filesystem paths with optional rename |
 | ✅ Backup sets | Named groups of containers defined in config for repeatable runs |
+| ✅ Filesystem backup | Back up any host path recursively with gitignore-style exclude patterns |
 | ✅ Management CLI | `bbman` for setup, health, updates, cleanup, and diagnostics |
 
 ---
@@ -258,6 +259,7 @@ best-backup/
 - [x] Backup rotation and retention policies
 - [x] AES-256-GCM and RSA-4096 encryption
 - [x] Full restore with optional rename
+- [x] Filesystem backup for arbitrary host paths and directory trees
 - [x] Management wrapper (`bbman`)
 - [x] GitHub key integration for public key distribution
 

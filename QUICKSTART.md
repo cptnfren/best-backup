@@ -121,6 +121,40 @@ Uses rsync `--link-dest` so unchanged files are hardlinked from the previous bac
    bbackup backup --remote gdrive
    ```
 
+### Back up local filesystem paths
+
+Point `--paths` at any directory or file. Everything inside is backed up recursively, and you can exclude patterns the same way `.gitignore` works:
+
+```bash
+bbackup backup --paths /home/user/documents /srv/data
+bbackup backup --paths /home/user/documents --exclude "*.tmp" --exclude ".cache/"
+```
+
+Or define named sets in your config and reference them by name:
+
+```yaml
+filesystem:
+  home-data:
+    targets:
+      - name: documents
+        path: /home/user/Documents
+        excludes: ["*.tmp", ".cache/", "node_modules/"]
+```
+
+```bash
+bbackup backup --filesystem-set home-data
+```
+
+Filesystem backups go through the same encryption, remote upload, and rotation pipeline as Docker backups.
+
+### Restore a filesystem backup
+
+```bash
+bbackup restore --backup-path ~/backups/docker/backup_2026-02-26 \
+  --filesystem documents \
+  --filesystem-destination /home/user/documents
+```
+
 ### Restore from a backup
 
 ```bash

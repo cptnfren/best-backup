@@ -6,6 +6,25 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+---
+
+## [1.3.1] - 2026-02-27
+
+### Added
+
+- 53 unit tests for filesystem backup and restore in `tests/test_filesystem_backup.py`, covering `FilesystemBackup`, `restore_filesystem_path`, `restore_backup` filesystem loop, and `BackupRunner` integration
+- 7 real-rsync integration tests in `tests/integration/test_docker_integration.py`: basic backup, exclude patterns, incremental hardlinks, progress callback, and roundtrip restore
+- `--yes` / `-y` flag on `maintenance/release.py` for non-interactive (agent/CI) execution
+
+### Fixed
+
+- `FilesystemBackup._build_rsync_cmd` was passing the current run directory as the staging directory to `_find_previous_backup`, causing incremental backups to use `--link-dest` pointing at themselves
+- `_find_previous_backup` now accepts `current_run_dir` and excludes it from the candidate scan so a backup never links to itself
+
+---
+
+## [1.3.0] - 2026-02-26
+
 ### Added
 
 - Filesystem backup: back up arbitrary host paths and directory trees with rsync, gitignore-style exclude patterns, and incremental `--link-dest` support
@@ -79,7 +98,11 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
-[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.3.1...HEAD
+[1.3.1]: https://github.com/cptnfren/best-backup/compare/v1.3.0...v1.3.1
+[1.3.0]: https://github.com/cptnfren/best-backup/compare/v1.2.1...v1.3.0
+[1.2.1]: https://github.com/cptnfren/best-backup/compare/v1.2.0...v1.2.1
+[1.2.0]: https://github.com/cptnfren/best-backup/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/cptnfren/best-backup/releases/tag/v1.1.0
 
 <!-- project-footer:start -->
