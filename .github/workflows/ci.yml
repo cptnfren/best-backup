@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-check:
+    name: Lint and syntax check (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+          pip install -e .
+
+      - name: Lint with ruff
+        run: ruff check bbackup/
+
+      - name: Check syntax (py_compile)
+        run: |
+          python -m py_compile bbackup/*.py
+          python -m py_compile bbackup/management/*.py
+
+      - name: Check imports
+        run: |
+          python -c "from bbackup.config import Config; print('config OK')"
+          python -c "from bbackup.cli import cli; print('cli OK')"
+          python -c "from bbackup.encryption import EncryptionManager; print('encryption OK')"
+          python -c "from bbackup.remote import RemoteStorage; print('remote OK')"
+          python -c "from bbackup.rotation import BackupRotation; print('rotation OK')"

@@ -62,6 +62,7 @@ backup_*/
 /tmp/
 *.tmp
 
-# Config (user-specific, not tracked)
-~/.config/bbackup/config.yaml
-~/.bbackup/config.yaml
+# Secrets and keys (never commit these)
+.env
+*.pem
+*.key

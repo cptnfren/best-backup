@@ -16,7 +16,18 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Linux Tools Project",
+    url="https://github.com/cptnfren/best-backup",
     packages=find_packages(),
+    keywords=[
+        "docker",
+        "backup",
+        "containers",
+        "volumes",
+        "tui",
+        "rsync",
+        "encryption",
+        "restore",
+    ],
     install_requires=[
         "rich>=13.7.0",
         "pyyaml>=6.0.1",
@@ -46,6 +57,7 @@ setup(
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
+        "Programming Language :: Python :: 3.13",
         "Topic :: System :: Archiving :: Backup",
     ],
 )
