@@ -1,0 +1,14 @@
+{
+  "timestamp": "20260227T034500Z",
+  "policy": "preserve",
+  "source_repo": "https://github.com/cptnfren/localsetup.git",
+  "source_commit": "8f2b3d2",
+  "target": "/mnt/data/devzone/best-backup/_localsetup",
+  "counts": {
+    "added": 233,
+    "updated": 0,
+    "removed": 0,
+    "preserved": 0,
+    "conflicts": 0
+  }
+}

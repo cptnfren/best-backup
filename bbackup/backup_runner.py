@@ -277,6 +277,12 @@ class BackupRunner:
         else:
             self.status.status = "completed"
         
+        # TODO: call self.docker_backup.create_metadata_archive(backup_dir) here
+        # to produce a compressed tar of configs/networks metadata.
+        # The method exists in docker_backup.py but is not yet wired into
+        # this workflow. When integrated, it should run after all item
+        # backups complete and before encrypt_backup_directory().
+        
         return results
     
     def encrypt_backup_directory(self, backup_dir: Path) -> Path:

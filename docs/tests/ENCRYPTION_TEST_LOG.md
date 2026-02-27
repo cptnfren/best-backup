@@ -13,7 +13,7 @@ encryption:
   enabled: true
   method: asymmetric
   asymmetric:
-    public_key: github:cptnfren/gist:0018de62adb0963274380cd3b6ed1863
+    public_key: github:YOUR_USERNAME/gist:YOUR_GIST_ID
     private_key: ~/.config/bbackup/backup_private.pem
     algorithm: rsa-4096
   encrypt_volumes: true
@@ -98,7 +98,7 @@ Failed to restore volume: test_sandbox_restored
 ### Asymmetric Encryption Flow
 
 1. **Key Loading:**
-   - Public key fetched from GitHub gist: `github:cptnfren/gist:0018de62adb0963274380cd3b6ed1863`
+   - Public key fetched from GitHub gist: `github:YOUR_USERNAME/gist:YOUR_GIST_ID`
    - Private key loaded from local file
    - Both keys load successfully ✓
 
@@ -116,9 +116,9 @@ Failed to restore volume: test_sandbox_restored
 
 ### GitHub Shortcut Resolution
 
-**Shortcut:** `github:cptnfren/gist:0018de62adb0963274380cd3b6ed1863`
+**Shortcut:** `github:YOUR_USERNAME/gist:YOUR_GIST_ID`
 
-**Resolved URL:** `https://gist.githubusercontent.com/cptnfren/0018de62adb0963274380cd3b6ed1863/raw/backup_public.pem`
+**Resolved URL:** `https://gist.githubusercontent.com/YOUR_USERNAME/YOUR_GIST_ID/raw/backup_public.pem`
 
 **Status:** ✓ Successfully resolved and fetched
 
@@ -196,7 +196,7 @@ python3 bbackup.py restore --backup-path "$BACKUP_DIR" --volumes test_sandbox_re
 ### ✅ Configuration
 - **Status:** COMPLETE
 - Encryption enabled in config
-- GitHub shortcut working: `github:cptnfren/gist:0018de62adb0963274380cd3b6ed1863`
+- GitHub shortcut working: `github:YOUR_USERNAME/gist:YOUR_GIST_ID`
 - Public key fetched successfully from GitHub
 - Private key loaded from local file
 

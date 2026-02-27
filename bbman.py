@@ -13,9 +13,9 @@ from typing import Optional
 import click
 from rich.console import Console
 
-# Hard-coded default repository URL
-# Can be overridden via BBACKUP_REPO_URL env var or config file
-# Try to extract from Git remote, fallback to hard-coded value
+# Default repository URL: auto-detected from git remote, then falls back to a
+# placeholder. Set BBACKUP_REPO_URL env var or run `bbman repo-url --url URL`
+# to configure permanently.
 try:
     import subprocess
     result = subprocess.run(
@@ -28,9 +28,9 @@ try:
     if result.returncode == 0:
         DEFAULT_REPO_URL = result.stdout.strip().replace(".git", "")
     else:
-        DEFAULT_REPO_URL = "https://github.com/cptnfren/best-backup"
+        DEFAULT_REPO_URL = "https://github.com/YOUR_USERNAME/best-backup"
 except Exception:
-    DEFAULT_REPO_URL = "https://github.com/cptnfren/best-backup"
+    DEFAULT_REPO_URL = "https://github.com/YOUR_USERNAME/best-backup"
 
 # Add bbackup to path
 sys.path.insert(0, str(Path(__file__).parent))

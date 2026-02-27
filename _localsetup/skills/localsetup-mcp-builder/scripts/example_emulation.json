@@ -1,0 +1,18 @@
+{
+  "tasks": [
+    {
+      "steps": [
+        {
+          "tool": "calculate_compound_interest",
+          "arguments": {
+            "principal": 10000,
+            "rate": 0.05,
+            "years": 3,
+            "compound_frequency": 12
+          }
+        }
+      ],
+      "response_text": "<response>11614.72</response>"
+    }
+  ]
+}

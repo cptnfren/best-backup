@@ -28,8 +28,8 @@
 ### 4. Keyboard Controls
 - ✅ **Q** - Quit/Cancel backup
 - ✅ **P** - Pause/Resume backup
-- ✅ **S** - Skip current item (planned)
-- ✅ **H** - Help (planned)
+- ✅ **S** - Skip current item (implemented; prints to console, modal overlay planned)
+- ✅ **H** - Help (implemented; prints to console, modal overlay planned)
 
 ### 5. Status Tracking
 - ✅ Thread-safe status updates
@@ -93,8 +93,8 @@ The dashboard will:
 
 ## Future Enhancements
 
-- [ ] Skip current item functionality
-- [ ] Help screen (H key)
+- [ ] S key: modal overlay for skip (currently prints to console)
+- [ ] H key: modal help overlay (currently prints to console)
 - [ ] More detailed progress for large operations
 - [ ] Network transfer speed display
 - [ ] Backup size estimation

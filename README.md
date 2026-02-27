@@ -1,6 +1,6 @@
 # bbackup - Docker Backup Tool
 
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
 A comprehensive, production-ready Docker backup solution with a beautiful Rich TUI interface. Backs up Docker containers, volumes, networks, and configurations with support for incremental backups, remote storage, encryption, and intelligent rotation policies.
@@ -46,7 +46,7 @@ A comprehensive, production-ready Docker backup solution with a beautiful Rich T
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Docker (with Docker socket access)
 - rsync (for volume backups)
 - rclone (optional, for Google Drive support)
@@ -325,13 +325,25 @@ Global Options:
 
 Backup Options:
   --containers, -C     Container names to backup (multiple)
-  --backup-set, -s    Use predefined backup set
-  --config-only       Backup only configurations
-  --volumes-only      Backup only volumes
-  --no-networks       Skip network backups
-  --incremental, -i   Use incremental backup
-  --remote, -r        Remote storage destinations (multiple)
-  --no-interactive    Disable interactive mode
+  --backup-set, -s     Use predefined backup set
+  --config-only        Backup only configurations
+  --volumes-only       Backup only volumes
+  --no-networks        Skip network backups
+  --incremental, -i    Use incremental backup (rsync --link-dest)
+  --remote, -r         Remote storage destinations (multiple)
+  --interactive, -I    Enable interactive container selection (default: on)
+  --no-interactive     Disable interactive mode
+
+Restore Options:
+  --backup-path        Path to backup directory (required)
+  --all                Restore everything
+  --containers, -C     Restore specific containers
+  --volumes, -V        Restore specific volumes
+  --networks, -N       Restore specific networks
+  --rename             Rename on restore: old_name:new_name
+
+List-Backups Options:
+  --backup-dir, -d     Directory to search for backups
 ```
 
 ## 🎨 Features in Detail
@@ -359,8 +371,8 @@ The TUI provides a BTOP-like interface with:
 - **Keyboard Controls:**
   - **Q** - Quit/Cancel backup
   - **P** - Pause/Resume backup
-  - **S** - Skip current item
-  - **H** - Show help screen
+  - **S** - Skip current item (prints to console; modal overlay planned)
+  - **H** - Show help screen (prints to console; modal overlay planned)
 
 ### Backup Strategy
 
@@ -550,7 +562,7 @@ bbman update --yes  # Skip confirmation
 bbman repo-url
 
 # Set repository URL
-bbman repo-url https://github.com/user/repo
+bbman repo-url --url https://github.com/YOUR_USERNAME/best-backup
 ```
 
 ### Run Application
@@ -640,29 +652,38 @@ python3 bbman.py health
 
 ```
 best-backup/
-├── bbackup/              # Main package
+├── bbackup/                # Main package
 │   ├── __init__.py
-│   ├── cli.py           # CLI entry point
-│   ├── config.py        # Configuration management
-│   ├── docker_backup.py # Docker backup logic
-│   ├── backup_runner.py # Backup orchestration
-│   ├── restore.py       # Restore operations
-│   ├── tui.py           # Rich TUI interface
-│   ├── remote.py        # Remote storage integration
-│   ├── rotation.py      # Backup rotation logic
-│   ├── encryption.py    # Encryption management
-│   ├── logging.py       # Logging system
-│   └── management/      # Management utilities
-│       ├── health.py
-│       ├── diagnostics.py
-│       ├── updater.py
-│       └── ...
-├── bbackup.py           # Main CLI script
-├── bbman.py             # Management wrapper
-├── config.yaml.example  # Example configuration
-├── requirements.txt     # Python dependencies
-├── setup.py             # Package setup
-└── README.md            # This file
+│   ├── cli.py              # bbackup CLI commands
+│   ├── config.py           # Configuration loading, all dataclasses
+│   ├── docker_backup.py    # Docker backup via temp containers
+│   ├── backup_runner.py    # Backup workflow + BackupStatus tracking
+│   ├── restore.py          # Restore operations
+│   ├── tui.py              # Rich TUI, live dashboard, BackupStatus
+│   ├── remote.py           # Remote storage (local/rclone/SFTP)
+│   ├── rotation.py         # Retention policies, quota cleanup
+│   ├── encryption.py       # AES-256-GCM + RSA/ECDSA encryption
+│   ├── logging.py          # Rotating file logging, get_logger()
+│   ├── bbman_entry.py      # Console script shim for bbman
+│   └── management/         # Lifecycle management subpackage
+│       ├── first_run.py    # First-run detection
+│       ├── setup_wizard.py # Interactive first-time setup
+│       ├── health.py       # Docker/system health checks
+│       ├── diagnostics.py  # Diagnostic report generation
+│       ├── dependencies.py # External dependency checks
+│       ├── updater.py      # Self-update from repo
+│       ├── version.py      # Version check, checksum
+│       ├── repo.py         # Repo URL management
+│       ├── config.py       # Management-layer config
+│       ├── status.py       # Status reporting utilities
+│       ├── cleanup.py      # Temp file cleanup
+│       └── utils.py        # Shared utilities
+├── bbackup.py              # bbackup entry point
+├── bbman.py                # bbman management CLI
+├── config.yaml.example     # Example configuration
+├── requirements.txt        # Python dependencies
+├── setup.py                # Package setup
+└── README.md               # This file
 ```
 
 ## 📚 Additional Documentation
@@ -683,8 +704,8 @@ best-backup/
 - [x] Volume compression
 - [x] Upload progress tracking
 - [x] List remote backups command
-- [x] Skip functionality (S key)
-- [x] Help screen (H key)
+- [x] Skip functionality (S key) - console output; modal overlay planned
+- [x] Help screen (H key) - console output; modal overlay planned
 - [x] Backup encryption (AES-256-GCM, RSA-4096)
 - [x] Restore functionality
 - [x] Management wrapper (bbman.py)

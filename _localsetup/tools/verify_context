@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Localsetup v2 - Context verification. Thin wrapper; logic in verify_context.py.
+# On Windows (Git Bash): delegates to verify_context.ps1.
+set -euo pipefail
+if [[ -n "${WINDIR:-}" ]] || [[ "${OSTYPE:-}" == "msys" ]] || [[ "${OSTYPE:-}" == "cygwin" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  exec pwsh -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT_DIR/verify_context.ps1" 2>/dev/null || exec powershell -NoProfile -ExecutionPolicy Bypass -File "$SCRIPT_DIR/verify_context.ps1"
+fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENGINE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+exec python3 "$ENGINE_DIR/tools/verify_context.py"

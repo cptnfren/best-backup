@@ -1,0 +1,3 @@
+# Localsetup v2 - Default system config (repo-local)
+framework_folder: _localsetup
+user_data_subdir: .localsetup-project

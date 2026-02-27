@@ -1,0 +1,6 @@
+<evaluation>
+   <qa_pair>
+      <question>Smoke test question (emulation).</question>
+      <answer>smoke_ok</answer>
+   </qa_pair>
+</evaluation>

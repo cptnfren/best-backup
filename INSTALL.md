@@ -176,14 +176,14 @@ If you get permission errors:
 
 ### Python Version Issues
 
-Ensure Python 3.8+ is used:
+Ensure Python 3.10+ is used:
 
 ```bash
 # Check Python version
 python3 --version
 
 # Use specific Python version if needed
-python3.8 -m pip install -e .
+python3.10 -m pip install -e .
 ```
 
 ## Post-Installation Setup

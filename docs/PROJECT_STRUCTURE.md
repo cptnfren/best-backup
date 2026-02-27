@@ -6,30 +6,37 @@ This document describes the organization and structure of the bbackup project re
 
 ```
 best-backup/
-├── .cursor/                    # Cursor AI rules (auto-loaded)
+├── .cursor/                    # Cursor AI rules (auto-loaded, not tracked in git)
 │   └── rules/                 # Rule files for AI agents
-│       ├── project_overview.mdc
-│       ├── code_organization.mdc
-│       ├── error_handling.mdc
-│       ├── docker_backup.mdc
-│       ├── tui_patterns.mdc
-│       ├── configuration.mdc
-│       ├── remote_storage.mdc
-│       ├── backup_rotation.mdc
-│       ├── workflow.mdc
-│       ├── testing.mdc
-│       └── documentation.mdc
+│       ├── bbackup.mdc        # Consolidated project rules (always applied)
+│       └── localsetup-context.mdc  # Localsetup framework context
 │
 ├── bbackup/                   # Main Python package
 │   ├── __init__.py           # Package metadata and version
-│   ├── cli.py                # CLI commands and entry point
-│   ├── config.py             # Configuration loading and parsing
-│   ├── docker_backup.py      # Docker backup operations
-│   ├── backup_runner.py      # Backup orchestration with status tracking
+│   ├── cli.py                # bbackup CLI commands and entry point
+│   ├── config.py             # Configuration loading, parsing, all dataclasses
+│   ├── docker_backup.py      # Docker backup via temp containers
+│   ├── backup_runner.py      # Backup workflow orchestration + BackupStatus
 │   ├── restore.py            # Restore operations
-│   ├── tui.py                # Rich TUI interface and status display
-│   ├── remote.py              # Remote storage integration
-│   └── rotation.py           # Backup rotation and retention logic
+│   ├── tui.py                # Rich TUI, live dashboard, BackupStatus class
+│   ├── remote.py             # Remote storage integration (local/rclone/SFTP)
+│   ├── rotation.py           # Backup rotation and retention logic
+│   ├── encryption.py         # AES-256-GCM + RSA/ECDSA encryption
+│   ├── logging.py            # Rotating file logging, get_logger() factory
+│   ├── bbman_entry.py        # Console script shim for bbman
+│   └── management/           # Lifecycle management subpackage
+│       ├── first_run.py      # First-run detection and config path
+│       ├── setup_wizard.py   # Interactive first-time setup wizard
+│       ├── health.py         # Docker/system health checks
+│       ├── diagnostics.py    # Diagnostic report generation
+│       ├── dependencies.py   # External dependency checks/install
+│       ├── updater.py        # Self-update from repo
+│       ├── version.py        # Version check, checksum computation
+│       ├── repo.py           # Repo URL management
+│       ├── config.py         # Management-layer config (separate from backup)
+│       ├── status.py         # Status reporting utilities
+│       ├── cleanup.py        # Temp file and stale resource cleanup
+│       └── utils.py          # Shared management utilities
 │
 ├── docs/                      # Development documentation
 │   ├── README.md             # Documentation index
@@ -58,7 +65,8 @@ best-backup/
 │   ├── populate_postgres.sh  # Test data population script
 │   └── test_backup_with_locks.sh  # Lock testing script
 │
-├── bbackup.py                # Main executable script (CLI entry point)
+├── bbackup.py                # bbackup entry point script
+├── bbman.py                  # bbman management CLI
 ├── config.yaml.example       # Example configuration file
 ├── requirements.txt          # Python dependencies
 ├── setup.py                  # Package setup for distribution
@@ -67,6 +75,7 @@ best-backup/
 ├── README.md                 # Main user documentation
 ├── QUICKSTART.md            # Quick start guide
 ├── QUICK_INSTALL.md         # Installation guide
+├── INSTALL.md               # Detailed installation guide
 └── PROJECT_SUMMARY.md       # Architecture and design overview
 ```
 
@@ -78,18 +87,22 @@ best-backup/
 - **Package directory:** bbackup/ (main source code)
 
 ### `.cursor/rules/`
-Contains Cursor AI agent rules organized by topic. These files automatically guide AI agents working on the codebase.
+Contains consolidated Cursor AI agent rules. Not tracked in git (`.cursor/` is gitignored). Two files: `bbackup.mdc` (all project rules, always applied) and `localsetup-context.mdc` (framework context).
 
 ### `bbackup/`
-Main Python package containing all source code. Each module has a specific responsibility:
-- `cli.py` - Command-line interface
-- `config.py` - Configuration management
-- `docker_backup.py` - Docker operations
-- `backup_runner.py` - Backup workflow orchestration
-- `restore.py` - Restore operations
-- `tui.py` - Terminal user interface
-- `remote.py` - Remote storage integration
-- `rotation.py` - Backup rotation logic
+Main Python package. Each module has a specific responsibility:
+- `cli.py` - bbackup CLI commands, arg parsing, orchestration
+- `config.py` - Config load/parse/validate, all dataclasses
+- `docker_backup.py` - Docker API, backup via temp Alpine containers
+- `backup_runner.py` - Workflow orchestration, `BackupStatus` tracking
+- `restore.py` - Volume/container/network restore
+- `tui.py` - Rich live dashboard, `BackupStatus` class
+- `remote.py` - Upload/download abstraction (local/rclone/SFTP)
+- `rotation.py` - Retention policies, quota cleanup
+- `encryption.py` - AES-256-GCM + RSA/ECDSA encryption, key management
+- `logging.py` - `get_logger()` factory, rotating file handler setup
+- `bbman_entry.py` - Console script shim for the `bbman` command
+- `management/` - Lifecycle subpackage (first-run, health, updates, diagnostics, etc.)
 
 ### `docs/`
 Development and technical documentation:

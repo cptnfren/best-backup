@@ -1,0 +1,7 @@
+{
+  "installed_at": "20260227T034500Z",
+  "source_repo": "https://github.com/cptnfren/localsetup.git",
+  "source_commit": "8f2b3d2",
+  "upgrade_policy": "preserve",
+  "manifest": "managed-manifest.tsv"
+}

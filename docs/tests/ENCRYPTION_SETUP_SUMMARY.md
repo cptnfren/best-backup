@@ -14,7 +14,7 @@ encryption:
   enabled: true
   method: asymmetric
   asymmetric:
-    public_key: github:cptnfren/gist:0018de62adb0963274380cd3b6ed1863
+    public_key: github:YOUR_USERNAME/gist:YOUR_GIST_ID
     private_key: ~/.config/bbackup/backup_private.pem
     algorithm: rsa-4096
   encrypt_volumes: true
@@ -26,8 +26,8 @@ encryption:
 
 ### Public Key
 - **Source:** GitHub Gist
-- **Shortcut:** `github:cptnfren/gist:0018de62adb0963274380cd3b6ed1863`
-- **Resolved URL:** `https://gist.githubusercontent.com/cptnfren/0018de62adb0963274380cd3b6ed1863/raw/backup_public.pem`
+- **Shortcut:** `github:YOUR_USERNAME/gist:YOUR_GIST_ID`
+- **Resolved URL:** `https://gist.githubusercontent.com/YOUR_USERNAME/YOUR_GIST_ID/raw/backup_public.pem`
 - **Status:** ✓ Fetches successfully
 - **Cached:** `~/.cache/bbackup/keys/`
 

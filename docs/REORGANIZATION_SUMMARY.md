@@ -7,7 +7,7 @@
 
 ### 1. Created Directory Structure
 
-- **`.cursor/rules/`** - Cursor AI agent rules (11 rule files)
+- **`.cursor/rules/`** - Cursor AI agent rules (consolidated to 2 files: `bbackup.mdc` + `localsetup-context.mdc`; `.cursor/` is gitignored)
 - **`docs/`** - Development documentation
   - `docs/reports/` - Deficiency and analysis reports
   - `docs/tests/` - Test results and reports
@@ -51,7 +51,7 @@
 
 ```
 best-backup/
-├── .cursor/rules/          # Cursor AI rules (11 .mdc files)
+├── .cursor/rules/          # Cursor AI rules (2 .mdc files, gitignored)
 ├── .gitignore              # Git ignore rules
 ├── bbackup/                # Main Python package
 ├── docs/                   # Development documentation

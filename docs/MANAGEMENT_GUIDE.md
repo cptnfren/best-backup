@@ -58,7 +58,8 @@ Run comprehensive health check:
 
 ```bash
 bbman check-deps
-bbman check-deps --install  # Install missing packages
+bbman check-deps --install   # Install missing packages
+bbman check-deps -i          # Shorthand for --install
 ```
 
 Check and optionally install missing dependencies:
@@ -95,14 +96,16 @@ Show backup status and history:
 ```bash
 bbman cleanup
 bbman cleanup --staging-days 7 --log-days 30
-bbman cleanup --yes  # Skip confirmation
+bbman cleanup --yes          # Skip confirmation
+bbman cleanup --no-backups   # Skip old backup cleanup
+bbman cleanup --no-temp      # Skip temporary file cleanup
 ```
 
 Cleanup old files:
 - Staging files (default: keep 7 days)
 - Log files (default: keep 30 days)
-- Old backups (per retention policy)
-- Temporary files
+- Old backups per retention policy (skip with `--no-backups`)
+- Temporary files (skip with `--no-temp`)
 
 ### Diagnostics
 

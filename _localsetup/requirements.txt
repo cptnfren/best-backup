@@ -1,0 +1,18 @@
+# Python deps for framework tools.
+# Install with any Python package manager, for example:
+#   python3 -m pip install -r _localsetup/requirements.txt
+# Runtime target: Python >= 3.10 (Ubuntu 22.04 LTS baseline).
+#
+# PyYAML: YAML parsing for PUBLIC_SKILL_INDEX.yaml and other framework docs.
+#   Used by: tools/refresh_public_skill_index.py, tools/skill_index_scrub.py
+PyYAML>=6.0
+#
+# requests: HTTP client for URL probing and skill index refresh.
+#   Replaces manual urllib.request usage in scrub and refresh tools.
+#   Used by: tools/skill_index_scrub.py, tools/refresh_public_skill_index.py
+requests>=2.28
+#
+# python-frontmatter: YAML frontmatter parsing for skill/PRD markdown files.
+#   Replaces fragile string-split frontmatter extraction.
+#   Used by: tools/skill_index_scrub.py, skills/localsetup-npm-management/scripts/npm_api.py
+python-frontmatter>=1.1
