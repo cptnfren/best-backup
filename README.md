@@ -246,7 +246,7 @@ best-backup/
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT.
 
 ---
 

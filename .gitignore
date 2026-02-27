@@ -39,6 +39,9 @@ ENV/
 # Localsetup framework (tooling, not part of this repo)
 _localsetup/
 
+# Release and maintenance tooling (local only, not published)
+maintenance/
+
 # Testing
 .pytest_cache/
 .coverage
