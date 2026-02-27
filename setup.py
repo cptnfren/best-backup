@@ -11,7 +11,7 @@ long_description = readme_file.read_text() if readme_file.exists() else ""
 
 setup(
     name="bbackup",
-    version="1.3.0",
+    version="1.3.1",
     description="Docker Backup Tool with Rich TUI",
     long_description=long_description,
     long_description_content_type="text/markdown",
