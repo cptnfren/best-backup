@@ -136,6 +136,42 @@ encryption:
   encrypt_configs: true
   encrypt_networks: true
 
+# Filesystem Backup Sets
+# Groups of local paths to back up with rsync (no Docker required).
+# Use: bbackup backup --filesystem-set <set-name>
+filesystem:
+  home-data:
+    description: "Important home directory data"
+    targets:
+      - name: documents
+        path: /home/user/Documents
+        enabled: true
+        excludes:
+          - "*.tmp"
+          - ".cache/"
+          - "node_modules/"
+      - name: projects
+        path: /home/user/projects
+        enabled: true
+        excludes:
+          - ".git/"
+          - "__pycache__/"
+          - "*.pyc"
+          - "dist/"
+          - "build/"
+  server-configs:
+    description: "Critical server configuration files"
+    targets:
+      - name: etc-nginx
+        path: /etc/nginx
+        enabled: true
+        excludes: []
+      - name: etc-app
+        path: /etc/myapp
+        enabled: true
+        excludes:
+          - "*.log"
+
 # Docker Settings
 docker:
   socket: /var/run/docker.sock

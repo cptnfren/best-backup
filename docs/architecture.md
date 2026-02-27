@@ -54,6 +54,7 @@ Orchestrates the full backup workflow:
 ```
 init → select items → prepare staging dir
   → backup configs → backup volumes → backup networks
+  → backup filesystem paths (if filesystem_targets provided)
   → [archive metadata - TODO: create_metadata_archive() exists but not yet wired in]
   → encrypt (if enabled)
   → upload to remotes
@@ -63,9 +64,18 @@ init → select items → prepare staging dir
 
 Reads and writes `BackupStatus` throughout so the TUI stays current.
 
+### `bbackup/filesystem_backup.py`
+
+Backs up arbitrary host filesystem paths and directory trees using rsync directly (no Docker). Key behaviors:
+
+- Source path is rsynced to `backup_dir/filesystems/<target_name>/`
+- Exclude patterns are written to a temp file and passed via `--exclude-from`; the temp file is always deleted in a `finally` block
+- Incremental mode uses `--link-dest` pointing at the matching target in the previous `backup_YYYYMMDD_HHMMSS` directory
+- Progress output is streamed to the caller's callback for live TUI updates
+
 ### `bbackup/restore.py`
 
-Reads a backup directory and restores containers, volumes, and networks. Supports renaming on restore (`--rename old:new`). Handles decryption before restore when the backup is encrypted.
+Reads a backup directory and restores containers, volumes, networks, and filesystem paths. Supports renaming on restore (`--rename old:new`). Handles decryption before restore when the backup is encrypted.
 
 ### `bbackup/tui.py`
 
@@ -164,6 +174,7 @@ best-backup/
 │   ├── cli.py
 │   ├── config.py
 │   ├── docker_backup.py
+│   ├── filesystem_backup.py
 │   ├── backup_runner.py
 │   ├── restore.py
 │   ├── tui.py

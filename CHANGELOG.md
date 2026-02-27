@@ -6,6 +6,50 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Filesystem backup: back up arbitrary host paths and directory trees with rsync, gitignore-style exclude patterns, and incremental `--link-dest` support
+- New `bbackup/filesystem_backup.py` module with `FilesystemBackup` class
+- `FilesystemTarget` and `FilesystemBackupSet` dataclasses in `config.py`
+- `filesystems:` section in `config.yaml.example` with annotated examples
+- `--paths`, `--exclude`, `--filesystem-set` options on `bbackup backup`
+- `--filesystem`, `--filesystem-destination` options on `bbackup restore`
+- `bbackup list-filesystem-sets` subcommand
+- Filesystem panel in live TUI dashboard (third column alongside containers and volumes)
+
+---
+
+## [1.2.1] - 2026-02-26
+
+### Changed
+
+- Expanded test coverage from 59% to 76% across all core modules
+- Resolved all ruff lint violations in the `bbackup` package
+
+### Fixed
+
+- `BackupRunner._parse_rsync_progress` hoisted from closure to method for reuse
+- `BackupStatus.update()` no longer receives `transfer_speed` as a kwarg (set directly)
+
+---
+
+## [1.2.0] - 2026-02-26
+
+### Added
+
+- Full CI testing suite: 289 unit tests covering all `bbackup/` modules
+- `scripts/run_tests.py` agentic sandbox test runner with Docker isolation and self-healing debug loop
+- `Dockerfile.test` for sandboxed test execution
+- `requirements-dev.txt` with pytest, pytest-cov, pytest-mock
+- GitHub Actions CI workflow with unit and integration test jobs
+- LICENSE file (MIT)
+- CHANGELOG.md following Keep a Changelog format
+- Community health files: CONTRIBUTING.md, CODE_OF_CONDUCT.md, issue templates, PR template
+- Project identity system: copyright footer stamped across all public-facing docs
+- `maintenance/release.py` automated release workflow with doc validation
+- `maintenance/check_docs.py` stale-doc detection with agent-driven auto-update support
+- `maintenance/bump_version.py` conventional-commit version bumping
+
 ---
 
 ## [1.1.0] - 2026-02-26

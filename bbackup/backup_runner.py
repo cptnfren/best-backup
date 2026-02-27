@@ -5,8 +5,9 @@ Backup runner with status tracking for live TUI updates.
 import time
 from pathlib import Path
 from typing import List, Optional
-from .config import Config, BackupScope
+from .config import Config, BackupScope, FilesystemTarget
 from .docker_backup import DockerBackup
+from .filesystem_backup import FilesystemBackup
 from .remote import RemoteStorageManager
 from .rotation import BackupRotation
 from .tui import BackupStatus
@@ -32,23 +33,27 @@ class BackupRunner:
         containers: Optional[List[str]] = None,
         scope: Optional[BackupScope] = None,
         incremental: bool = False,
+        filesystem_targets: Optional[List[FilesystemTarget]] = None,
     ) -> dict:
         """Run backup with status updates."""
         if scope is None:
             scope = self.config.scope
-        
+
         backup_dir = Path(backup_dir)
         backup_dir.mkdir(parents=True, exist_ok=True)
-        
+
         results = {
             "containers": {},
             "volumes": {},
             "networks": {},
+            "filesystems": {},
             "errors": [],
         }
         
         self.status.start()
-        
+
+        fs_targets = filesystem_targets or []
+
         # Calculate total items
         total_items = 0
         if scope.containers or scope.configs:
@@ -63,7 +68,9 @@ class BackupRunner:
         if scope.networks:
             networks = self.docker_backup.get_all_networks()
             total_items += len(networks)
-        
+        if scope.filesystems:
+            total_items += len(fs_targets)
+
         self.status.update(total=total_items, completed=0)
         
         completed = 0
@@ -155,69 +162,10 @@ class BackupRunner:
                 )
                 
                 logger.info(f"Backing up volume: {volume_name} (incremental={incremental})")
-                
-                # Create progress callback to parse rsync output
-                def parse_rsync_progress(line: str):
-                    """Parse rsync progress output and update status."""
-                    import re
-                    # Parse rsync progress2 format: "    123,456,789  50%  123.45MB/s    0:00:05  filename"
-                    # Or: "    123,456,789  50%  123.45MB/s    0:00:05"
-                    progress_match = re.search(r'(\d+(?:,\d+)*)\s+(\d+)%\s+([\d.]+)([KMGT]?B/s)', line)
-                    if progress_match:
-                        bytes_str = progress_match.group(1).replace(',', '')
-                        percentage = int(progress_match.group(2))
-                        speed_str = progress_match.group(3)
-                        speed_unit = progress_match.group(4)
-                        
-                        try:
-                            bytes_transferred = int(bytes_str)
-                            speed = float(speed_str)
-                            
-                            # Convert speed to MB/s
-                            speed_multiplier = {'B/s': 1/(1024*1024), 'KB/s': 1/1024, 'MB/s': 1, 'GB/s': 1024, 'TB/s': 1024*1024}
-                            speed_mb = speed * speed_multiplier.get(speed_unit, 1)
-                            
-                            # Estimate total bytes from percentage
-                            if percentage > 0:
-                                total_bytes = int(bytes_transferred * 100 / percentage)
-                            else:
-                                total_bytes = 0
-                            
-                            self.status.update(
-                                bytes_transferred=bytes_transferred,
-                                total_bytes=total_bytes if total_bytes > 0 else None,
-                            )
-                            # transfer_speed is not a kwarg of update(); set directly
-                            self.status.transfer_speed = speed_mb
-                        except (ValueError, ZeroDivisionError):
-                            pass
-                    
-                    # Parse file count: "Number of files: 1,234 (reg: 1,200, dir: 34)"
-                    files_match = re.search(r'Number of files:\s*(\d+(?:,\d+)*)', line)
-                    if files_match:
-                        try:
-                            files_count = int(files_match.group(1).replace(',', ''))
-                            self.status.update(total_files=files_count)
-                        except ValueError:
-                            pass
-                    
-                    # Parse current file being transferred
-                    # Look for filename at end of line (rsync progress2 format)
-                    file_match = re.search(r'([^/\s]+\.\w+)\s*$', line.strip())
-                    if file_match and not progress_match:
-                        self.status.update(current_file=file_match.group(1))
-                    
-                    # Also track files transferred count
-                    if "sent" in line.lower() and "received" in line.lower():
-                        # This indicates a file transfer completed
-                        if not hasattr(self.status, '_files_counted'):
-                            self.status._files_counted = 0
-                        self.status._files_counted += 1
-                        self.status.update(files_transferred=self.status._files_counted)
-                
+
                 success = self.docker_backup.backup_volume(
-                    volume_name, backup_dir, incremental, 
-                    progress_callback=parse_rsync_progress
+                    volume_name, backup_dir, incremental,
+                    progress_callback=self._parse_rsync_progress
                 )
                 results["volumes"][volume_name] = "success" if success else "failed"
                 self.status.volumes_status[volume_name] = "success" if success else "failed"
@@ -273,11 +221,55 @@ class BackupRunner:
                 completed += 1
                 self.status.update(completed=completed)
         
+        # Backup filesystem paths
+        fs_backup = FilesystemBackup(self.config)
+        if scope.filesystems and fs_targets and not self.status.status == "cancelled":
+            for target in fs_targets:
+                if self.status.status == "cancelled":
+                    break
+
+                while self.status.status == "paused" and not self.status.status == "cancelled":
+                    time.sleep(0.5)
+
+                if self.status.status == "cancelled":
+                    break
+
+                if self.status.skip_current:
+                    logger.info(f"Skipping filesystem path: {target.name}")
+                    self.status.skip_current = False
+                    results["filesystems"][target.name] = "skipped"
+                    self.status.filesystems_status[target.name] = "skipped"
+                    completed += 1
+                    self.status.update(completed=completed)
+                    continue
+
+                self.status.update(
+                    action=f"Backing up path: {target.path}",
+                    item=target.name,
+                    completed=completed,
+                )
+
+                logger.info(f"Backing up filesystem path: {target.path}")
+                success = fs_backup.backup_path(
+                    target, backup_dir, incremental,
+                    progress_callback=self._parse_rsync_progress,
+                )
+                results["filesystems"][target.name] = "success" if success else "failed"
+                self.status.filesystems_status[target.name] = "success" if success else "failed"
+                if not success:
+                    error_msg = f"Failed to backup path: {target.path}"
+                    logger.error(error_msg)
+                    results["errors"].append(error_msg)
+                    self.status.add_error(error_msg)
+
+                completed += 1
+                self.status.update(completed=completed)
+
         if self.status.status == "cancelled":
             self.status.status = "cancelled"
         else:
             self.status.status = "completed"
-        
+
         # TODO: call self.docker_backup.create_metadata_archive(backup_dir) here
         # to produce a compressed tar of configs/networks metadata.
         # The method exists in docker_backup.py but is not yet wired into
@@ -286,6 +278,51 @@ class BackupRunner:
         
         return results
     
+    def _parse_rsync_progress(self, line: str) -> None:
+        """Parse rsync --info=progress2 output and update status metrics."""
+        import re
+        # progress2 format: "    123,456,789  50%  123.45MB/s    0:00:05"
+        progress_match = re.search(r'(\d+(?:,\d+)*)\s+(\d+)%\s+([\d.]+)([KMGT]?B/s)', line)
+        if progress_match:
+            bytes_str = progress_match.group(1).replace(',', '')
+            percentage = int(progress_match.group(2))
+            speed_str = progress_match.group(3)
+            speed_unit = progress_match.group(4)
+            try:
+                bytes_transferred = int(bytes_str)
+                speed = float(speed_str)
+                speed_multiplier = {
+                    'B/s': 1 / (1024 * 1024), 'KB/s': 1 / 1024,
+                    'MB/s': 1, 'GB/s': 1024, 'TB/s': 1024 * 1024,
+                }
+                speed_mb = speed * speed_multiplier.get(speed_unit, 1)
+                total_bytes = int(bytes_transferred * 100 / percentage) if percentage > 0 else 0
+                self.status.update(
+                    bytes_transferred=bytes_transferred,
+                    total_bytes=total_bytes if total_bytes > 0 else None,
+                )
+                # transfer_speed is not a kwarg of update(); set directly
+                self.status.transfer_speed = speed_mb
+            except (ValueError, ZeroDivisionError):
+                pass
+
+        files_match = re.search(r'Number of files:\s*(\d+(?:,\d+)*)', line)
+        if files_match:
+            try:
+                self.status.update(total_files=int(files_match.group(1).replace(',', '')))
+            except ValueError:
+                pass
+
+        file_match = re.search(r'([^/\s]+\.\w+)\s*$', line.strip())
+        if file_match and not progress_match:
+            self.status.update(current_file=file_match.group(1))
+
+        if "sent" in line.lower() and "received" in line.lower():
+            if not hasattr(self.status, '_files_counted'):
+                self.status._files_counted = 0
+            self.status._files_counted += 1
+            self.status.update(files_transferred=self.status._files_counted)
+
     def encrypt_backup_directory(self, backup_dir: Path) -> Path:
         """
         Encrypt backup directory if encryption is enabled.

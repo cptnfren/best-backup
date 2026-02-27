@@ -278,29 +278,68 @@ class DockerRestore:
             logger.error(f"Decryption error: {e}")
             return backup_path
     
+    def restore_filesystem_path(
+        self,
+        target_name: str,
+        backup_path: Path,
+        destination: Optional[Path] = None,
+    ) -> bool:
+        """
+        Restore a filesystem backup using rsync.
+
+        Args:
+            target_name: The target name under backup_path/filesystems/.
+            backup_path: Root backup directory for this run.
+            destination: Destination path to restore into. Required; caller must supply
+                         the original path since it is not stored in the backup structure.
+
+        Returns:
+            True on success, False on any failure.
+        """
+        src = backup_path / "filesystems" / target_name
+        if not src.exists():
+            logger.error(f"Filesystem backup not found: {src}")
+            return False
+
+        if destination is None:
+            logger.error(f"No destination specified for filesystem restore: {target_name}")
+            return False
+
+        destination = Path(destination)
+        destination.mkdir(parents=True, exist_ok=True)
+
+        cmd = ["rsync", "-av", "--delete", str(src) + "/", str(destination) + "/"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"rsync restore failed for '{target_name}': {result.stderr.strip()}")
+        return result.returncode == 0
+
     def restore_backup(
         self,
         backup_path: Path,
         containers: Optional[List[str]] = None,
         volumes: Optional[List[str]] = None,
         networks: Optional[List[str]] = None,
+        filesystems: Optional[List[str]] = None,
+        filesystem_destination: Optional[Path] = None,
         rename_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, any]:
         """Restore complete backup."""
         backup_path = Path(backup_path)
-        
+
         # Decrypt backup if encrypted
         backup_path = self.decrypt_backup_directory(backup_path)
-        
+
         rename_map = rename_map or {}
-        
+
         results = {
             "containers": {},
             "volumes": {},
             "networks": {},
+            "filesystems": {},
             "errors": [],
         }
-        
+
         # Restore containers
         if containers is not None:
             configs_dir = backup_path / "configs"
@@ -311,7 +350,7 @@ class DockerRestore:
                     results["containers"][container_name] = "success" if success else "failed"
                     if not success:
                         results["errors"].append(f"Failed to restore container: {container_name}")
-        
+
         # Restore volumes
         if volumes is not None:
             volumes_dir = backup_path / "volumes"
@@ -322,7 +361,7 @@ class DockerRestore:
                     results["volumes"][volume_name] = "success" if success else "failed"
                     if not success:
                         results["errors"].append(f"Failed to restore volume: {volume_name}")
-        
+
         # Restore networks
         if networks is not None:
             networks_dir = backup_path / "networks"
@@ -333,5 +372,13 @@ class DockerRestore:
                     results["networks"][network_name] = "success" if success else "failed"
                     if not success:
                         results["errors"].append(f"Failed to restore network: {network_name}")
-        
+
+        # Restore filesystem paths
+        if filesystems is not None:
+            for target_name in filesystems:
+                success = self.restore_filesystem_path(target_name, backup_path, filesystem_destination)
+                results["filesystems"][target_name] = "success" if success else "failed"
+                if not success:
+                    results["errors"].append(f"Failed to restore filesystem: {target_name}")
+
         return results

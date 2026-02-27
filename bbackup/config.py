@@ -16,6 +16,7 @@ class BackupScope:
     volumes: bool = True
     networks: bool = True
     configs: bool = True
+    filesystems: bool = True
 
 
 @dataclass
@@ -25,6 +26,23 @@ class BackupSet:
     description: str = ""
     containers: List[str] = field(default_factory=list)
     scope: BackupScope = field(default_factory=BackupScope)
+
+
+@dataclass
+class FilesystemTarget:
+    """A single filesystem path to back up."""
+    name: str
+    path: str
+    excludes: List[str] = field(default_factory=list)
+    enabled: bool = True
+
+
+@dataclass
+class FilesystemBackupSet:
+    """Named set of filesystem targets."""
+    name: str
+    description: str = ""
+    targets: List[FilesystemTarget] = field(default_factory=list)
 
 
 @dataclass
@@ -83,6 +101,7 @@ class Config:
         self.config_path = config_path or self._find_config()
         self.data: Dict[str, Any] = {}
         self.backup_sets: Dict[str, BackupSet] = {}
+        self.filesystem_sets: Dict[str, FilesystemBackupSet] = {}
         self.remotes: Dict[str, RemoteStorage] = {}
         self.retention = RetentionPolicy()
         self.incremental = IncrementalSettings()
@@ -156,6 +175,7 @@ class Config:
                     volumes=scope.get("volumes", True),
                     networks=scope.get("networks", True),
                     configs=scope.get("configs", True),
+                    filesystems=scope.get("filesystems", True),
                 )
         
         # Parse backup sets
@@ -167,6 +187,7 @@ class Config:
                     volumes=scope_data.get("volumes", True),
                     networks=scope_data.get("networks", True),
                     configs=scope_data.get("configs", True),
+                    filesystems=scope_data.get("filesystems", True),
                 )
                 self.backup_sets[name] = BackupSet(
                     name=name,
@@ -174,7 +195,24 @@ class Config:
                     containers=set_data.get("containers", []),
                     scope=scope,
                 )
-        
+
+        # Parse filesystem backup sets
+        for set_name, set_data in self.data.get("filesystem", {}).items():
+            targets = [
+                FilesystemTarget(
+                    name=t["name"],
+                    path=t["path"],
+                    excludes=t.get("excludes", []),
+                    enabled=t.get("enabled", True),
+                )
+                for t in set_data.get("targets", [])
+            ]
+            self.filesystem_sets[set_name] = FilesystemBackupSet(
+                name=set_name,
+                description=set_data.get("description", ""),
+                targets=targets,
+            )
+
         # Parse remote storage
         if "remotes" in self.data:
             for name, remote_data in self.data["remotes"].items():

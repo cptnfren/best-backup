@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.table import Table
 from rich import box
 
-from .config import Config, BackupScope
+from .config import Config, BackupScope, FilesystemTarget
 from .docker_backup import DockerBackup
 from .tui import BackupTUI, BackupStatus
 from .remote import RemoteStorageManager
@@ -91,6 +91,24 @@ def cli(ctx, config):
     multiple=True,
     help="Remote storage destinations (can specify multiple)",
 )
+@click.option(
+    "--paths",
+    "-p",
+    multiple=True,
+    metavar="PATH",
+    help="Filesystem paths to back up (can specify multiple)",
+)
+@click.option(
+    "--exclude",
+    multiple=True,
+    metavar="PATTERN",
+    help="Exclude patterns for filesystem backup (gitignore-style, can specify multiple)",
+)
+@click.option(
+    "--filesystem-set",
+    default=None,
+    help="Named filesystem backup set from config",
+)
 @click.pass_context
 def backup(
     ctx,
@@ -103,6 +121,9 @@ def backup(
     interactive,
     no_interactive,
     remote,
+    paths,
+    exclude,
+    filesystem_set,
 ):
     """Create Docker backup"""
     config: Config = ctx.obj["config"]
@@ -182,11 +203,26 @@ def backup(
     backup_name = f"backup_{backup_timestamp}"
     backup_dir = staging_dir / backup_name
     
+    # Resolve filesystem targets
+    filesystem_targets = []
+    if filesystem_set and filesystem_set in config.filesystem_sets:
+        fs_set_obj = config.filesystem_sets[filesystem_set]
+        filesystem_targets = [t for t in fs_set_obj.targets if t.enabled]
+        console.print(f"[green]Using filesystem set: {filesystem_set}[/green]")
+    elif paths:
+        filesystem_targets = [
+            FilesystemTarget(name=Path(p).name, path=p, excludes=list(exclude))
+            for p in paths
+        ]
+    elif scope.filesystems:
+        for fs_set_obj in config.filesystem_sets.values():
+            filesystem_targets.extend(t for t in fs_set_obj.targets if t.enabled)
+
     # Initialize status and runner
     status = BackupStatus()
     tui.status = status
     runner = BackupRunner(config, status)
-    
+
     # Define backup operation
     def backup_operation():
         nonlocal backup_dir, backup_name  # Allow modification of outer scope variables
@@ -197,6 +233,7 @@ def backup(
                 containers=containers_to_backup,
                 scope=scope,
                 incremental=incremental or config.incremental.enabled,
+                filesystem_targets=filesystem_targets,
             )
             
             # Encrypt backup if enabled
@@ -235,6 +272,7 @@ def backup(
                 "containers": status.containers_status,
                 "volumes": status.volumes_status,
                 "networks": status.networks_status,
+                "filesystems": status.filesystems_status,
             },
             status.errors,
         )
@@ -359,6 +397,17 @@ def init_config(ctx):
     is_flag=True,
     help="Restore all containers, volumes, and networks from backup",
 )
+@click.option(
+    "--filesystem",
+    multiple=True,
+    help="Filesystem target names to restore (can specify multiple)",
+)
+@click.option(
+    "--filesystem-destination",
+    type=click.Path(),
+    default=None,
+    help="Destination path for filesystem restore",
+)
 @click.pass_context
 def restore(
     ctx,
@@ -368,6 +417,8 @@ def restore(
     networks,
     rename,
     all,
+    filesystem,
+    filesystem_destination,
 ):
     """Restore Docker backup"""
     config: Config = ctx.obj["config"]
@@ -413,9 +464,12 @@ def restore(
         if networks:
             networks_to_restore = list(networks)
     
-    if not containers_to_restore and not volumes_to_restore and not networks_to_restore:
-        console.print("[red]No containers, volumes, or networks specified to restore[/red]")
-        console.print("[dim]Use --all to restore everything, or specify --containers, --volumes, or --networks[/dim]")
+    filesystems_to_restore = list(filesystem) if filesystem else None
+    fs_destination = Path(filesystem_destination) if filesystem_destination else None
+
+    if not containers_to_restore and not volumes_to_restore and not networks_to_restore and not filesystems_to_restore:
+        console.print("[red]No containers, volumes, networks, or filesystem paths specified to restore[/red]")
+        console.print("[dim]Use --all to restore everything, or specify --containers, --volumes, --networks, or --filesystem[/dim]")
         sys.exit(1)
     
     console.print(f"[bold]Restoring from backup: {backup_path}[/bold]\n")
@@ -426,6 +480,8 @@ def restore(
         containers=containers_to_restore,
         volumes=volumes_to_restore,
         networks=networks_to_restore,
+        filesystems=filesystems_to_restore,
+        filesystem_destination=fs_destination,
         rename_map=rename_map,
     )
     
@@ -444,12 +500,17 @@ def restore(
     networks_success = sum(1 for v in results.get("networks", {}).values() if v == "success")
     networks_failed = sum(1 for v in results.get("networks", {}).values() if v == "failed")
     
+    fs_restore_success = sum(1 for v in results.get("filesystems", {}).values() if v == "success")
+    fs_restore_failed = sum(1 for v in results.get("filesystems", {}).values() if v == "failed")
+
     if containers_to_restore:
         table.add_row("Containers", str(containers_success), str(containers_failed))
     if volumes_to_restore:
         table.add_row("Volumes", str(volumes_success), str(volumes_failed))
     if networks_to_restore:
         table.add_row("Networks", str(networks_success), str(networks_failed))
+    if filesystems_to_restore:
+        table.add_row("Filesystems", str(fs_restore_success), str(fs_restore_failed))
     
     console.print(table)
     
@@ -684,6 +745,26 @@ def init_encryption(ctx, method, key_path, password, algorithm, upload_github):
     except Exception as e:
         console.print(f"[red]Error generating keys: {e}[/red]")
         sys.exit(1)
+
+
+@cli.command("list-filesystem-sets")
+@click.pass_context
+def list_filesystem_sets(ctx):
+    """List configured filesystem backup sets"""
+    config: Config = ctx.obj["config"]
+    console: Console = ctx.obj["console"]
+
+    if not config.filesystem_sets:
+        console.print("[yellow]No filesystem backup sets configured[/yellow]")
+        return
+
+    for name, fs_set in config.filesystem_sets.items():
+        console.print(f"\n[bold cyan]{name}[/bold cyan]: {fs_set.description}")
+        for t in fs_set.targets:
+            status_str = "[green]enabled[/green]" if t.enabled else "[dim]disabled[/dim]"
+            console.print(f"  {status_str} {t.path}")
+            for excl in t.excludes:
+                console.print(f"    [dim]exclude: {excl}[/dim]")
 
 
 if __name__ == "__main__":

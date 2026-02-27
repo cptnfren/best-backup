@@ -97,6 +97,24 @@ remotes:
     path: ~/backups/docker
 ```
 
+To back up local filesystem paths, add a `filesystem:` section:
+
+```yaml
+filesystem:
+  home-data:
+    description: "Important home directory data"
+    targets:
+      - name: documents
+        path: /home/user/Documents
+        enabled: true
+        excludes:
+          - "*.tmp"
+          - ".cache/"
+          - "node_modules/"
+```
+
+Run these sets with `bbackup backup --filesystem-set home-data`, or pass paths directly with `--paths`.
+
 ---
 
 ## CLI reference
@@ -104,20 +122,29 @@ remotes:
 ### `bbackup` commands
 
 ```bash
-bbackup backup                          # Interactive backup with TUI
-bbackup backup --backup-set production  # Use a named backup set
-bbackup backup --containers app db      # Pick specific containers
-bbackup backup --incremental            # rsync --link-dest mode
-bbackup backup --config-only            # Skip volumes
-bbackup backup --volumes-only           # Skip configs
-bbackup backup --no-networks            # Skip network configs
-bbackup backup --remote gdrive          # Upload to specific remote
+bbackup backup                                  # Interactive backup with TUI
+bbackup backup --backup-set production          # Use a named backup set
+bbackup backup --containers app db              # Pick specific containers
+bbackup backup --incremental                    # rsync --link-dest mode
+bbackup backup --config-only                    # Skip volumes
+bbackup backup --volumes-only                   # Skip configs
+bbackup backup --no-networks                    # Skip network configs
+bbackup backup --remote gdrive                  # Upload to specific remote
+
+# Filesystem backup (non-Docker paths)
+bbackup backup --paths /home/user/docs /srv/data            # Back up specific paths
+bbackup backup --paths /home/user/docs --exclude "*.tmp"    # With exclude patterns
+bbackup backup --filesystem-set home-data                   # Named set from config
 
 bbackup restore --backup-path /path/to/backup --all
 bbackup restore --backup-path /path --containers app --rename app:app_v2
 
+# Filesystem restore
+bbackup restore --backup-path /path --filesystem documents --filesystem-destination /home/user/docs
+
 bbackup list-containers
 bbackup list-backup-sets
+bbackup list-filesystem-sets
 bbackup list-backups
 bbackup list-remote-backups --remote gdrive
 
@@ -191,18 +218,19 @@ Full details in [docs/encryption.md](docs/encryption.md).
 ```
 best-backup/
 ├── bbackup/                # Main Python package
-│   ├── cli.py              # bbackup CLI entry point
-│   ├── config.py           # Config loading and all dataclasses
-│   ├── docker_backup.py    # Docker backup via temp Alpine containers
-│   ├── backup_runner.py    # Backup workflow orchestration
-│   ├── restore.py          # Restore operations
-│   ├── tui.py              # Rich TUI and BackupStatus tracking
-│   ├── remote.py           # Remote storage (local / rclone / SFTP)
-│   ├── rotation.py         # Retention policies and quota cleanup
-│   ├── encryption.py       # AES-256-GCM + RSA encryption
-│   ├── logging.py          # Rotating file logger
-│   ├── bbman_entry.py      # Console script shim for bbman
-│   └── management/         # bbman subpackage (11 modules)
+│   ├── cli.py                  # bbackup CLI entry point
+│   ├── config.py               # Config loading and all dataclasses
+│   ├── docker_backup.py        # Docker backup via temp Alpine containers
+│   ├── filesystem_backup.py    # Host filesystem backup via rsync
+│   ├── backup_runner.py        # Backup workflow orchestration
+│   ├── restore.py              # Restore operations
+│   ├── tui.py                  # Rich TUI and BackupStatus tracking
+│   ├── remote.py               # Remote storage (local / rclone / SFTP)
+│   ├── rotation.py             # Retention policies and quota cleanup
+│   ├── encryption.py           # AES-256-GCM + RSA encryption
+│   ├── logging.py              # Rotating file logger
+│   ├── bbman_entry.py          # Console script shim for bbman
+│   └── management/             # bbman subpackage (11 modules)
 ├── bbackup.py              # bbackup entry point
 ├── bbman.py                # bbman entry point
 ├── config.yaml.example     # Annotated config template

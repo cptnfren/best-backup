@@ -5,7 +5,7 @@ Provides BTOP-like graphical interface for backup operations with live updates.
 
 import time
 import threading
-from typing import List, Dict, Optional, Set, Callable
+from typing import Any, List, Dict, Optional, Set, Callable
 from datetime import timedelta
 from rich.console import Console
 from rich.panel import Panel
@@ -39,6 +39,7 @@ class BackupStatus:
         self.containers_status = {}
         self.volumes_status = {}
         self.networks_status = {}
+        self.filesystems_status: Dict[str, Any] = {}
         self.remote_status = {}
         self.skip_current = False  # Flag to skip current item
         self.encryption_status = "idle"  # idle, encrypting, encrypted, failed
@@ -161,6 +162,7 @@ class BackupTUI:
         layout["main"].split_row(
             Layout(name="containers", ratio=1),
             Layout(name="volumes", ratio=1),
+            Layout(name="filesystems", ratio=1),
         )
         
         # Header
@@ -340,7 +342,37 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
         layout["volumes"].update(
             Panel(volumes_table, title="Volumes", border_style="yellow", box=box.ROUNDED)
         )
-        
+
+        # Filesystems panel
+        filesystems_table = Table(show_header=True, box=box.SIMPLE, show_edge=False)
+        filesystems_table.add_column("Path", style="cyan", width=22)
+        filesystems_table.add_column("Status", width=10)
+        filesystems_table.add_column("Progress", style="dim", width=12)
+
+        for name, status_info in list(self.status.filesystems_status.items())[:10]:
+            if isinstance(status_info, dict):
+                fs_status = status_info.get("status", "unknown")
+                size = status_info.get("size", "-")
+                speed = status_info.get("speed", "")
+            else:
+                fs_status = status_info
+                size = "-"
+                speed = ""
+            color = "green" if fs_status == "success" else "red" if fs_status == "failed" else "yellow"
+            progress_display = size if size != "-" else speed if speed else fs_status
+            filesystems_table.add_row(
+                name[:22],
+                f"[{color}]{fs_status[:8]}[/{color}]",
+                progress_display[:12],
+            )
+
+        if not self.status.filesystems_status:
+            filesystems_table.add_row("[dim]No paths backed up yet[/dim]", "", "")
+
+        layout["filesystems"].update(
+            Panel(filesystems_table, title="Filesystems", border_style="cyan", box=box.ROUNDED)
+        )
+
         # Status panel with encryption info and metrics
         status_lines = []
         
@@ -594,9 +626,13 @@ Status: [{status_color}]{self.status.status.upper()}[/{status_color}]{elapsed}{e
         networks_success = sum(1 for v in results.get("networks", {}).values() if v == "success")
         networks_failed = sum(1 for v in results.get("networks", {}).values() if v == "failed")
         
+        fs_success = sum(1 for v in results.get("filesystems", {}).values() if v == "success")
+        fs_failed = sum(1 for v in results.get("filesystems", {}).values() if v == "failed")
+
         table.add_row("Containers", str(containers_success), str(containers_failed))
         table.add_row("Volumes", str(volumes_success), str(volumes_failed))
         table.add_row("Networks", str(networks_success), str(networks_failed))
+        table.add_row("Filesystems", str(fs_success), str(fs_failed))
         
         self.console.print(table)
         
