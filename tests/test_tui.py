@@ -9,9 +9,7 @@ import threading
 import time
 from datetime import timedelta
 from io import StringIO
-from unittest.mock import MagicMock
 
-import pytest
 
 from bbackup.config import Config
 from bbackup.tui import BackupStatus, BackupTUI

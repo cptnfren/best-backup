@@ -5,10 +5,7 @@ Created: 2026-02-26
 Last Updated: 2026-02-26
 """
 
-import hashlib
-import json
 import os
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -161,7 +158,7 @@ class TestGitHubShortcutResolution:
         with patch("bbackup.encryption.requests.head") as mock_head, \
              patch("bbackup.encryption.requests.get"):
             mock_head.return_value = MagicMock(status_code=200)
-            mgr = EncryptionManager(cfg)
+            EncryptionManager(cfg)
         mock_head.assert_called()
 
     def test_first_200_url_returned(self, tmp_path):
@@ -171,7 +168,6 @@ class TestGitHubShortcutResolution:
             method="symmetric",
             symmetric={"key_file": "github:testuser"},
         )
-        resolved = []
         with patch("bbackup.encryption.requests.head") as mock_head, \
              patch("bbackup.encryption.requests.get") as mock_get:
             mock_head.return_value = MagicMock(status_code=200)
@@ -180,10 +176,8 @@ class TestGitHubShortcutResolution:
                 content=b"A" * 32,
                 raise_for_status=MagicMock(),
             )
-            mgr = EncryptionManager(cfg)
-        # If a key was loaded, the URL was resolved
-        # (key_data would be processed and may be padded/truncated)
-        # The test just verifies no exception was raised and head was called
+            EncryptionManager(cfg)
+        # Verifies no exception was raised and head was called
         mock_head.assert_called()
 
     def test_all_404_ssh_fallback(self):
@@ -193,8 +187,6 @@ class TestGitHubShortcutResolution:
             method="symmetric",
             symmetric={"key_file": "github:testuser"},
         )
-        responses = []
-
         def head_side_effect(url, **kwargs):
             m = MagicMock()
             if "github.com/testuser.keys" in url:
@@ -318,10 +310,6 @@ class TestKeyCache:
         mgr = EncryptionManager(cfg)
         url = "https://example.com/testkey.pem"
         data = b"my_secret_key_data"
-
-        cache_dir = tmp_path / "cache"
-        url_hash = hashlib.sha256(url.encode()).hexdigest()[:16]
-        cache_file = cache_dir / f"key_{url_hash}.cache"
 
         with patch("pathlib.Path.home", return_value=tmp_path):
             mgr._cache_key(url, data)

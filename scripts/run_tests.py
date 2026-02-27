@@ -18,12 +18,9 @@ Last Updated: 2026-02-26
 import argparse
 import datetime
 import json
-import os
 import re
-import shutil
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.parent.resolve()
@@ -268,13 +265,13 @@ def write_report(
     status_icon = "PASSED" if exit_code == 0 else "FAILED"
 
     report_lines = [
-        f"# bbackup CI Test Report",
-        f"",
+        "# bbackup CI Test Report",
+        "",
         f"**Status:** {status_icon}  ",
         f"**Timestamp:** {now}  ",
         f"**Python:** {python_version}  ",
         f"**Attempt count:** {attempt_count}  ",
-        f"",
+        "",
     ]
 
     if fixes_applied:

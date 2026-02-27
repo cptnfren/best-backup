@@ -4,11 +4,8 @@ Created: 2026-02-26
 Last Updated: 2026-02-26
 """
 
-import shutil
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 from bbackup.config import Config, RemoteStorage
 from bbackup.remote import RemoteStorageManager

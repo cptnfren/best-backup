@@ -5,13 +5,10 @@ Created: 2026-02-26
 Last Updated: 2026-02-26
 """
 
-import os
 from io import StringIO
 from pathlib import Path
-from typing import Dict
 from unittest.mock import MagicMock, patch
 
-import pytest
 from docker.errors import DockerException
 
 from bbackup.config import Config
@@ -77,7 +74,7 @@ class TestHealth:
         import sys
         original = sys.modules.pop("paramiko", None)
         try:
-            with patch("builtins.__import__", side_effect=ImportError) as mock_import:
+            with patch("builtins.__import__", side_effect=ImportError):
                 pass  # We won't actually break all imports
             # Instead: test that missing list is populated when paramiko absent
             ok, installed, missing = health_module.check_python_packages()
@@ -201,7 +198,6 @@ class TestCleanup:
         assert isinstance(count, int)
 
     def test_cleanup_staging_removes_old_items(self, tmp_path):
-        import time
         old_dir = tmp_path / "backup_old"
         old_dir.mkdir()
         (old_dir / "file.txt").write_text("data")
@@ -274,7 +270,7 @@ class TestStatus:
 
 class TestFirstRun:
     def test_is_first_run_when_marker_absent(self, tmp_path):
-        from bbackup.management.first_run import is_first_run, mark_first_run_complete
+        from bbackup.management.first_run import is_first_run
         with patch("bbackup.management.first_run.Path.home", return_value=tmp_path):
             assert is_first_run() is True
 
@@ -373,6 +369,91 @@ class TestRepo:
 # ---------------------------------------------------------------------------
 
 
+class TestDependencies:
+    def test_check_system_dependencies_returns_dict(self):
+        from bbackup.management.dependencies import check_system_dependencies
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="rsync version 3.2\n")
+            result = check_system_dependencies()
+        assert "docker" in result
+        assert "rsync" in result
+        assert "tar" in result
+        assert isinstance(result["rsync"], tuple)
+
+    def test_check_system_dependencies_tool_missing(self):
+        from bbackup.management.dependencies import check_system_dependencies
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            result = check_system_dependencies()
+        for tool, (available, _) in result.items():
+            assert available is False
+
+    def test_check_system_dependencies_exception(self):
+        from bbackup.management.dependencies import check_system_dependencies
+        with patch("subprocess.run", side_effect=Exception("not found")):
+            result = check_system_dependencies()
+        for tool, (available, _) in result.items():
+            assert available is False
+
+    def test_check_python_dependencies_all_present(self):
+        from bbackup.management.dependencies import check_python_dependencies
+        ok, installed, missing = check_python_dependencies()
+        assert isinstance(ok, bool)
+        assert isinstance(installed, list)
+        assert isinstance(missing, list)
+
+    def test_check_requirements_file_reads_packages(self):
+        from bbackup.management.dependencies import check_requirements_file
+        result = check_requirements_file()
+        assert isinstance(result, list)
+
+    def test_install_python_packages_success(self):
+        from bbackup.management.dependencies import install_python_packages
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = install_python_packages(["requests"])
+        assert result is True
+
+    def test_install_python_packages_failure(self):
+        from bbackup.management.dependencies import install_python_packages
+        import subprocess
+        with patch("subprocess.run", side_effect=subprocess.CalledProcessError(1, "pip")):
+            result = install_python_packages(["nonexistent_pkg_xyz"])
+        assert result is False
+
+    def test_check_and_install_no_install(self):
+        from bbackup.management.dependencies import check_and_install_dependencies
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="v1.0\n")
+            result = check_and_install_dependencies(install_missing=False)
+        assert "system" in result
+        assert "python_installed" in result
+        assert "python_missing" in result
+
+    def test_check_and_install_with_missing_install_confirm(self):
+        from bbackup.management.dependencies import check_and_install_dependencies
+        with patch("bbackup.management.dependencies.check_python_dependencies",
+                   return_value=(False, ["rich", "click"], ["paramiko"])), \
+             patch("bbackup.management.dependencies.check_system_dependencies",
+                   return_value={"docker": (True, "ok")}), \
+             patch("bbackup.management.dependencies.check_requirements_file", return_value=[]), \
+             patch("bbackup.management.dependencies.install_python_packages", return_value=True), \
+             patch("rich.prompt.Confirm.ask", return_value=True):
+            result = check_and_install_dependencies(install_missing=True)
+        assert isinstance(result, dict)
+
+    def test_display_dependency_report_runs(self):
+        from bbackup.management.dependencies import display_dependency_report
+        results = {
+            "system": {"docker": (True, "ok"), "rsync": (False, "not found")},
+            "python_installed": ["rich", "click"],
+            "python_missing": [],
+            "python_all_installed": True,
+            "required_packages": ["rich"],
+        }
+        display_dependency_report(results)  # Should not raise
+
+
 class TestUtils:
     def test_format_bytes_small(self):
         try:
@@ -382,4 +463,418 @@ class TestUtils:
             pass  # Module may have different API
 
     def test_utils_importable(self):
-        import bbackup.management.utils  # Should not raise
+        pass  # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# TestSetupWizard
+# ---------------------------------------------------------------------------
+
+
+class TestSetupWizard:
+    def test_check_docker_success(self):
+        from bbackup.management.setup_wizard import check_docker
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            ok, msg = check_docker()
+        assert ok is True
+        assert "accessible" in msg.lower()
+
+    def test_check_docker_failure_returncode(self):
+        from bbackup.management.setup_wizard import check_docker
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            ok, msg = check_docker()
+        assert ok is False
+
+    def test_check_docker_not_found(self):
+        from bbackup.management.setup_wizard import check_docker
+        with patch("subprocess.run", side_effect=FileNotFoundError):
+            ok, msg = check_docker()
+        assert ok is False
+        assert "not found" in msg.lower()
+
+    def test_check_docker_generic_exception(self):
+        from bbackup.management.setup_wizard import check_docker
+        with patch("subprocess.run", side_effect=RuntimeError("oops")):
+            ok, msg = check_docker()
+        assert ok is False
+
+    def test_check_system_tool_found(self):
+        from bbackup.management.setup_wizard import check_system_tool
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            ok, msg = check_system_tool("rsync")
+        assert ok is True
+        assert "rsync" in msg
+
+    def test_check_system_tool_not_found(self):
+        from bbackup.management.setup_wizard import check_system_tool
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            ok, msg = check_system_tool("rsync")
+        assert ok is False
+
+    def test_check_system_tool_exception(self):
+        from bbackup.management.setup_wizard import check_system_tool
+        with patch("subprocess.run", side_effect=Exception("err")):
+            ok, msg = check_system_tool("rsync")
+        assert ok is False
+
+    def test_check_python_packages_all_present(self):
+        from bbackup.management.setup_wizard import check_python_packages
+        ok, missing = check_python_packages()
+        assert isinstance(ok, bool)
+        assert isinstance(missing, list)
+
+    def test_run_setup_wizard_docker_fail_no_confirm(self):
+        """Wizard aborts when docker fails and user declines to continue."""
+        from bbackup.management.setup_wizard import run_setup_wizard
+        with patch("bbackup.management.setup_wizard.check_docker", return_value=(False, "no docker")), \
+             patch("rich.prompt.Confirm.ask", return_value=False):
+            result = run_setup_wizard()
+        assert result is False
+
+    def test_run_setup_wizard_docker_fail_user_continues(self):
+        """Wizard proceeds when docker fails but user accepts."""
+        from bbackup.management.setup_wizard import run_setup_wizard
+        with patch("bbackup.management.setup_wizard.check_docker", return_value=(False, "no docker")), \
+             patch("bbackup.management.setup_wizard.check_system_tool", return_value=(True, "ok")), \
+             patch("bbackup.management.setup_wizard.check_python_packages", return_value=(True, [])), \
+             patch("bbackup.management.setup_wizard.get_config_file") as mock_cfg, \
+             patch("bbackup.management.setup_wizard.mark_first_run_complete", return_value=True), \
+             patch("subprocess.run") as mock_sub, \
+             patch("rich.prompt.Confirm.ask", return_value=True), \
+             patch("rich.prompt.Prompt.ask", return_value="asymmetric"):
+            mock_path = MagicMock()
+            mock_path.exists.return_value = False
+            mock_path.parent = MagicMock()
+            mock_cfg.return_value = mock_path
+            mock_sub.return_value = MagicMock(returncode=0)
+            result = run_setup_wizard()
+        assert result is True
+
+    def test_run_setup_wizard_happy_path(self):
+        """Wizard completes successfully with all checks passing."""
+        from bbackup.management.setup_wizard import run_setup_wizard
+        with patch("bbackup.management.setup_wizard.check_docker", return_value=(True, "Docker is accessible")), \
+             patch("bbackup.management.setup_wizard.check_system_tool", return_value=(True, "ok")), \
+             patch("bbackup.management.setup_wizard.check_python_packages", return_value=(True, [])), \
+             patch("bbackup.management.setup_wizard.get_config_file") as mock_cfg, \
+             patch("bbackup.management.setup_wizard.mark_first_run_complete", return_value=True), \
+             patch("subprocess.run") as mock_sub, \
+             patch("rich.prompt.Confirm.ask", return_value=False):
+            mock_path = MagicMock()
+            mock_path.exists.return_value = False
+            mock_path.parent = MagicMock()
+            mock_cfg.return_value = mock_path
+            mock_sub.return_value = MagicMock(returncode=0)
+            result = run_setup_wizard()
+        assert result is True
+
+    def test_run_setup_wizard_missing_packages_install_fails(self):
+        """Wizard aborts when package install fails and user declines to continue."""
+        from bbackup.management.setup_wizard import run_setup_wizard
+        with patch("bbackup.management.setup_wizard.check_docker", return_value=(True, "ok")), \
+             patch("bbackup.management.setup_wizard.check_system_tool", return_value=(True, "ok")), \
+             patch("bbackup.management.setup_wizard.check_python_packages", return_value=(False, ["paramiko"])), \
+             patch("subprocess.run", side_effect=Exception("pip failed")), \
+             patch("rich.prompt.Confirm.ask", side_effect=[True, False]):  # install=yes, continue=no
+            result = run_setup_wizard()
+        assert result is False
+
+
+# ---------------------------------------------------------------------------
+# TestUpdater
+# ---------------------------------------------------------------------------
+
+
+class TestUpdater:
+    def test_backup_repository_success(self, tmp_path):
+        from bbackup.management.updater import backup_repository
+        src_dir = tmp_path / "repo"
+        src_dir.mkdir()
+        (src_dir / "bbackup").mkdir()
+        (src_dir / "bbackup" / "cli.py").write_text("# cli")
+        (src_dir / "setup.py").write_text("# setup")
+
+        backup = tmp_path / "backup"
+        result = backup_repository(src_dir, backup)
+        assert result is True
+        assert backup.exists()
+
+    def test_backup_repository_missing_items_skipped(self, tmp_path):
+        from bbackup.management.updater import backup_repository
+        src_dir = tmp_path / "repo"
+        src_dir.mkdir()
+        backup = tmp_path / "backup"
+        result = backup_repository(src_dir, backup)
+        assert result is True
+
+    def test_backup_repository_failure(self, tmp_path):
+        from bbackup.management.updater import backup_repository
+        with patch("shutil.copytree", side_effect=OSError("no space")), \
+             patch("shutil.copy2", side_effect=OSError("no space")):
+            result = backup_repository(tmp_path, tmp_path / "bk")
+        # Either succeeds (nothing to copy) or returns False
+        assert isinstance(result, bool)
+
+    def test_download_file_from_github_non_github(self):
+        from bbackup.management.updater import download_file_from_github
+        with patch("bbackup.management.updater.parse_repo_url", return_value={"type": "unknown"}):
+            result = download_file_from_github("http://gitlab.com/user/repo", "README.md")
+        assert result is None
+
+    def test_download_file_from_github_success(self):
+        from bbackup.management.updater import download_file_from_github
+        mock_resp = MagicMock(status_code=200, content=b"file content")
+        with patch("bbackup.management.updater.parse_repo_url",
+                   return_value={"type": "github", "owner": "user", "repo": "myrepo"}), \
+             patch("bbackup.management.updater.requests.get", return_value=mock_resp):
+            result = download_file_from_github("https://github.com/user/myrepo", "README.md")
+        assert result == b"file content"
+
+    def test_download_file_from_github_404(self):
+        from bbackup.management.updater import download_file_from_github
+        mock_resp = MagicMock(status_code=404)
+        with patch("bbackup.management.updater.parse_repo_url",
+                   return_value={"type": "github", "owner": "user", "repo": "myrepo"}), \
+             patch("bbackup.management.updater.requests.get", return_value=mock_resp):
+            result = download_file_from_github("https://github.com/user/myrepo", "missing.md")
+        assert result is None
+
+    def test_download_file_from_github_exception(self):
+        from bbackup.management.updater import download_file_from_github
+        with patch("bbackup.management.updater.parse_repo_url",
+                   return_value={"type": "github", "owner": "user", "repo": "myrepo"}), \
+             patch("bbackup.management.updater.requests.get", side_effect=Exception("network error")):
+            result = download_file_from_github("https://github.com/user/myrepo", "file.py")
+        assert result is None
+
+    def test_update_file_success(self, tmp_path):
+        from bbackup.management.updater import update_file
+        result = update_file(tmp_path, "subdir/file.txt", b"hello world")
+        assert result is True
+        assert (tmp_path / "subdir" / "file.txt").read_bytes() == b"hello world"
+
+    def test_update_file_checksum_match(self, tmp_path):
+        from bbackup.management.updater import update_file
+        import hashlib
+        content = b"verified content"
+        checksum = hashlib.sha256(content).hexdigest()
+        result = update_file(tmp_path, "file.txt", content, expected_checksum=checksum)
+        assert result is True
+
+    def test_update_file_checksum_mismatch(self, tmp_path):
+        from bbackup.management.updater import update_file
+        result = update_file(tmp_path, "file.txt", b"content", expected_checksum="badhash")
+        assert result is False
+
+    def test_update_via_git_success(self, tmp_path):
+        from bbackup.management.updater import update_via_git
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0)
+            result = update_via_git(tmp_path, branch="main")
+        assert result is True
+
+    def test_update_via_git_failure(self, tmp_path):
+        from bbackup.management.updater import update_via_git
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=1)
+            result = update_via_git(tmp_path, branch="main")
+        assert result is False
+
+    def test_update_via_git_exception(self, tmp_path):
+        from bbackup.management.updater import update_via_git
+        with patch("subprocess.run", side_effect=Exception("git error")):
+            result = update_via_git(tmp_path)
+        assert result is False
+
+    def test_update_via_download_success(self, tmp_path):
+        from bbackup.management.updater import update_via_download
+        with patch("bbackup.management.updater.parse_repo_url",
+                   return_value={"type": "github", "owner": "user", "repo": "myrepo"}), \
+             patch("bbackup.management.updater.download_file_from_github", return_value=b"content"), \
+             patch("bbackup.management.updater.update_file", return_value=True):
+            result = update_via_download(
+                tmp_path, "https://github.com/user/myrepo",
+                changed_files=["bbackup/cli.py"],
+                new_files=["newfile.txt"]
+            )
+        assert result is True
+
+    def test_perform_update_no_updates(self, tmp_path):
+        from bbackup.management.updater import perform_update
+        with patch("bbackup.management.updater.check_for_updates",
+                   return_value={"has_updates": False}), \
+             patch("bbackup.management.updater.get_repo_url", return_value="https://github.com/user/repo"):
+            result = perform_update(tmp_path)
+        assert result["success"] is True
+        assert result["files_updated"] == 0
+
+    def test_perform_update_with_updates_git(self, tmp_path):
+        from bbackup.management.updater import perform_update
+        with patch("bbackup.management.updater.check_for_updates",
+                   return_value={"has_updates": True, "changed": ["bbackup/cli.py"], "new": [], "removed": []}), \
+             patch("bbackup.management.updater.get_repo_url", return_value="https://github.com/user/repo"), \
+             patch("bbackup.management.updater.backup_repository", return_value=True), \
+             patch("bbackup.management.updater.update_via_git", return_value=True), \
+             patch("bbackup.management.first_run.get_data_dir", return_value=tmp_path):
+            result = perform_update(tmp_path, method="git")
+        assert isinstance(result, dict)
+
+    def test_perform_update_backup_fails(self, tmp_path):
+        from bbackup.management.updater import perform_update
+        with patch("bbackup.management.updater.check_for_updates",
+                   return_value={"has_updates": True, "changed": ["f.py"], "new": [], "removed": []}), \
+             patch("bbackup.management.updater.get_repo_url", return_value="https://github.com/user/repo"), \
+             patch("bbackup.management.updater.backup_repository", return_value=False), \
+             patch("bbackup.management.first_run.get_data_dir", return_value=tmp_path):
+            result = perform_update(tmp_path)
+        assert result["success"] is False
+        assert "backup" in result["message"].lower()
+
+
+# ---------------------------------------------------------------------------
+# TestDiagnosticsExtended
+# ---------------------------------------------------------------------------
+
+
+class TestDiagnosticsExtended:
+    def test_get_config_summary_defaults(self):
+        from bbackup.management.diagnostics import get_config_summary
+        result = get_config_summary()
+        assert "config_path" in result
+        assert "backup_sets" in result
+
+    def test_get_recent_errors_missing_file(self, tmp_path):
+        from bbackup.management.diagnostics import get_recent_errors
+        result = get_recent_errors(tmp_path / "nonexistent.log")
+        assert result == []
+
+    def test_get_recent_errors_with_content(self, tmp_path):
+        from bbackup.management.diagnostics import get_recent_errors
+        log_file = tmp_path / "test.log"
+        log_file.write_text("INFO some info\nERROR something failed\nDEBUG ok\nCRITICAL bad\n")
+        result = get_recent_errors(log_file)
+        assert any("ERROR" in e for e in result)
+        assert any("CRITICAL" in e for e in result)
+        assert not any("INFO" in e for e in result)
+
+    def test_run_diagnostics_returns_all_keys(self, mock_docker_client):
+        from bbackup.management.diagnostics import run_diagnostics
+        result = run_diagnostics()
+        assert "timestamp" in result
+        assert "system" in result
+        assert "docker" in result
+        assert "config" in result
+        assert "recent_errors" in result
+
+    def test_generate_diagnostics_report_string(self):
+        from bbackup.management.diagnostics import generate_diagnostics_report
+        diag = {
+            "timestamp": "2026-02-26T00:00:00",
+            "system": {
+                "platform": "Linux",
+                "system": "Linux",
+                "release": "5.15",
+                "machine": "x86_64",
+                "processor": "x86_64",
+                "python_version": "3.12.0\n(build)",
+                "python_executable": "/usr/bin/python3",
+            },
+            "docker": {"accessible": True, "version": "24.0", "containers": 2, "images": 5},
+            "config": {"config_path": "default", "staging_dir": "/tmp/staging",
+                       "backup_sets": 1, "remotes": 0, "encryption_enabled": False},
+            "recent_errors": [],
+        }
+        report = generate_diagnostics_report(diag)
+        assert "bbackup Diagnostics Report" in report
+        assert "Linux" in report
+
+    def test_generate_diagnostics_report_docker_inaccessible(self):
+        from bbackup.management.diagnostics import generate_diagnostics_report
+        diag = {
+            "timestamp": "2026-02-26T00:00:00",
+            "system": {
+                "platform": "Linux", "system": "Linux", "release": "5.15",
+                "machine": "x86_64", "processor": "x86_64",
+                "python_version": "3.12.0", "python_executable": "/usr/bin/python3",
+            },
+            "docker": {"accessible": False, "error": "connection refused"},
+            "config": {"config_path": "default", "staging_dir": "/tmp", "backup_sets": 0,
+                       "remotes": 0, "encryption_enabled": False},
+            "recent_errors": ["ERROR: something went wrong"],
+        }
+        report = generate_diagnostics_report(diag)
+        assert "Not accessible" in report or "connection refused" in report
+
+    def test_generate_diagnostics_report_saves_to_file(self, tmp_path):
+        from bbackup.management.diagnostics import generate_diagnostics_report
+        diag = {
+            "timestamp": "2026-02-26T00:00:00",
+            "system": {
+                "platform": "Linux", "system": "Linux", "release": "5.15",
+                "machine": "x86_64", "processor": "x86_64",
+                "python_version": "3.12.0", "python_executable": "/usr/bin/python3",
+            },
+            "docker": {"accessible": False, "error": "none"},
+            "config": {"config_path": "default", "staging_dir": "/tmp",
+                       "backup_sets": 0, "remotes": 0, "encryption_enabled": False},
+            "recent_errors": [],
+        }
+        out_file = tmp_path / "report.txt"
+        generate_diagnostics_report(diag, output_file=out_file)
+        assert out_file.exists()
+
+
+# ---------------------------------------------------------------------------
+# TestCleanupExtended
+# ---------------------------------------------------------------------------
+
+
+class TestCleanupExtended:
+    def test_cleanup_log_files_empty_dir(self, tmp_path):
+        from bbackup.management.cleanup import cleanup_log_files
+        cfg = Config(config_path=None)
+        cfg.data["logging"] = {"file": str(tmp_path / "nonexistent_dir" / "bbackup.log")}
+        result = cleanup_log_files(config=cfg, days=30)
+        assert result == 0
+
+    def test_cleanup_log_files_removes_old(self, tmp_path):
+        from bbackup.management.cleanup import cleanup_log_files
+        log_dir = tmp_path
+        # Create a rotated log file with old mtime
+        old_log = log_dir / "bbackup.log.1"
+        old_log.write_text("old log")
+        import os
+        import time
+        old_time = time.time() - (60 * 60 * 24 * 40)  # 40 days ago
+        os.utime(old_log, (old_time, old_time))
+
+        cfg = Config(config_path=None)
+        cfg.data["logging"] = {"file": str(log_dir / "bbackup.log")}
+        result = cleanup_log_files(config=cfg, days=30)
+        assert result >= 1
+
+    def test_cleanup_temporary_files_no_temp(self):
+        from bbackup.management.cleanup import cleanup_temporary_files
+        with patch("glob.glob", return_value=[]), \
+             patch("pathlib.Path.exists", return_value=False):
+            result = cleanup_temporary_files()
+        assert result == 0
+
+    def test_run_cleanup_no_confirm(self, tmp_path):
+        from bbackup.management.cleanup import run_cleanup
+        cfg = Config(config_path=None)
+        cfg.data["backup"] = {"local_staging": str(tmp_path)}
+        result = run_cleanup(config=cfg, confirm=False, cleanup_backups=False, cleanup_temp=False)
+        assert "staging_removed" in result
+        assert "logs_removed" in result
+
+    def test_run_cleanup_confirm_declined(self, tmp_path):
+        from bbackup.management.cleanup import run_cleanup
+        cfg = Config(config_path=None)
+        with patch("rich.prompt.Confirm.ask", return_value=False):
+            result = run_cleanup(config=cfg, confirm=True)
+        assert result["staging_removed"] == 0

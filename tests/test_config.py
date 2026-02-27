@@ -7,11 +7,9 @@ Last Updated: 2026-02-26
 """
 
 import logging
-import os
 import textwrap
 
 import pytest
-import yaml
 
 import bbackup
 from bbackup.config import (
@@ -237,7 +235,6 @@ class TestSetupLogging:
 
     def test_setup_logging_no_config(self, tmp_path):
         """setup_logging with no logging section should not raise."""
-        log_dir = tmp_path / "logs"
         cfg = Config(config_path=None)
         # Override log file to tmp_path to avoid writing to home dir in tests
         cfg.data["logging"] = {

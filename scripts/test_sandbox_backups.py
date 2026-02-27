@@ -6,7 +6,6 @@ Tests various backup scenarios using the sandbox filesystem and logs
 all issues, errors, and observations for debugging.
 """
 
-import os
 import sys
 import subprocess
 import json
@@ -15,7 +14,6 @@ from datetime import datetime
 from typing import Dict, List, Any
 from rich.console import Console
 from rich.table import Table
-from rich.panel import Panel
 from rich import box
 
 # Add parent directory to path
@@ -113,7 +111,7 @@ class BackupTester:
             return False
         
         # Copy sandbox data to volume
-        console.print(f"Copying sandbox data to Docker volume...")
+        console.print("Copying sandbox data to Docker volume...")
         copy_cmd = [
             "docker", "run", "--rm",
             "-v", f"{self.sandbox_path}:/source:ro",
@@ -712,7 +710,7 @@ class BackupTester:
             'warnings': sum(1 for i in self.issues if i['severity'] == 'warning'),
         }
         
-        console.print(f"\n[bold]Summary:[/bold]")
+        console.print("\n[bold]Summary:[/bold]")
         console.print(f"  Tests: {summary['total_tests']} total, {summary['passed']} passed, {summary['failed']} failed")
         console.print(f"  Issues: {summary['errors']} errors, {summary['warnings']} warnings")
         console.print("=" * 70)

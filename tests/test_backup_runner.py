@@ -6,11 +6,8 @@ Last Updated: 2026-02-26
 """
 
 import threading
-import time
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from bbackup.config import BackupScope, Config
 from bbackup.backup_runner import BackupRunner
@@ -106,8 +103,8 @@ class TestRunBackupLifecycle:
             mock_db.get_all_containers.side_effect = cancel_on_list
 
             scope = BackupScope(containers=True, volumes=False, networks=False, configs=True)
-            result = runner.run_backup(tmp_path, scope=scope)
-
+            runner.run_backup(tmp_path, scope=scope)
+        
         # Backup should have been cancelled - config backup not called
         mock_db.backup_container_config.assert_not_called()
 

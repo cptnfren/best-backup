@@ -106,7 +106,7 @@ class SandboxGenerator:
             # Generate final report
             self.generate_report()
             
-            self.console.print(f"\n[bold green]✓ Sandbox created successfully![/bold green]")
+            self.console.print("\n[bold green]✓ Sandbox created successfully![/bold green]")
             return True
             
         except Exception as e:
@@ -443,7 +443,7 @@ services:
         years = archive_config.get('years', [2020, 2021, 2022, 2023])
         
         total_files = len(years) * 12 * files_per_month * 2  # old + recent
-        task = self.progress.add_task(f"Generating archive files...", total=total_files)
+        task = self.progress.add_task("Generating archive files...", total=total_files)
         
         files_created = 0
         
@@ -478,7 +478,7 @@ services:
         project_types = project_config.get('project_types', ['web', 'api', 'scripts'])
         
         total_files = len(project_types) * 4 * files_per_project  # 4 subdirs per project
-        task = self.progress.add_task(f"Generating project files...", total=total_files)
+        task = self.progress.add_task("Generating project files...", total=total_files)
         
         files_created = 0
         
@@ -531,7 +531,7 @@ services:
         ])
         max_size_kb = self.config.get('harvesting', {}).get('max_size_kb', 100)
         
-        task = self.progress.add_task(f"Harvesting system files...", total=len(safe_paths))
+        task = self.progress.add_task("Harvesting system files...", total=len(safe_paths))
         
         system_dir = self.output_dir / "data/system_samples"
         
@@ -860,11 +860,11 @@ def main(output, config, file_count, size_mb, harvest_system, quick, verbose):
         sandbox_config['structure']['media']['large_files']['sizes_mb'] = [15, 25]
     
     # Confirm before creating
-    console.print(f"[bold cyan]bbackup Sandbox Generator[/bold cyan]")
+    console.print("[bold cyan]bbackup Sandbox Generator[/bold cyan]")
     console.print(f"\nOutput directory: [yellow]{sandbox_config['output']}[/yellow]")
     
     if os.path.exists(sandbox_config['output']):
-        if not click.confirm(f"\nDirectory exists. Overwrite?", default=False):
+        if not click.confirm("\nDirectory exists. Overwrite?", default=False):
             console.print("[yellow]Cancelled.[/yellow]")
             return
     
@@ -875,7 +875,7 @@ def main(output, config, file_count, size_mb, harvest_system, quick, verbose):
     if success:
         console.print(f"\n[bold green]✓ Sandbox ready at: {sandbox_config['output']}[/bold green]")
     else:
-        console.print(f"\n[bold red]✗ Sandbox generation failed[/bold red]")
+        console.print("\n[bold red]✗ Sandbox generation failed[/bold red]")
         raise click.Abort()
 
 

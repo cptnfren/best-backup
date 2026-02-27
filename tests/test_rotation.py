@@ -6,12 +6,10 @@ Last Updated: 2026-02-26
 """
 
 import json
-import shutil
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 from bbackup.config import RemoteStorage, RetentionPolicy
 from bbackup.rotation import BackupRotation

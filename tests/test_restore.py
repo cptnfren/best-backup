@@ -353,7 +353,7 @@ class TestRestoreBackup:
         mock_docker_client.containers.run.return_value = temp_container
 
         dr = make_restore(mock_docker_client)
-        result = dr.restore_backup(
+        dr.restore_backup(
             tmp_path,
             containers=None,
             volumes=["data"],

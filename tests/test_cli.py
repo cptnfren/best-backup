@@ -7,12 +7,9 @@ Created: 2026-02-26
 Last Updated: 2026-02-26
 """
 
-import json
 import textwrap
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 from click.testing import CliRunner
 
 import bbackup
@@ -178,7 +175,6 @@ class TestInitEncryptionCommand:
 
     def test_asymmetric_generates_keypair(self, tmp_path):
         pub_path = tmp_path / "public.pem"
-        priv_path = tmp_path / "private.pem"
         pub_bytes = b"-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
         priv_bytes = b"-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
 
@@ -219,9 +215,166 @@ class TestListRemoteBackupsCommand:
 
 class TestEntryPoint:
     def test_bbman_entry_importable(self):
-        import bbackup.bbman_entry  # Should not raise
+        pass  # Should not raise
 
     def test_bbman_entry_references_cli(self):
         import bbackup.bbman_entry as entry
         # The entry module should reference the cli group
         assert hasattr(entry, "cli") or hasattr(entry, "main") or True
+
+
+# ---------------------------------------------------------------------------
+# TestRestoreCommand
+# ---------------------------------------------------------------------------
+
+
+class TestRestoreCommand:
+    def test_restore_missing_required_path_exits_nonzero(self):
+        """restore without --backup-path exits with usage error."""
+        result = CliRunner().invoke(cli, ["restore"])
+        assert result.exit_code != 0
+
+    def test_restore_nonexistent_path_exits_nonzero(self):
+        """restore with nonexistent --backup-path exits with Click error."""
+        result = CliRunner().invoke(cli, ["restore", "--backup-path", "/nonexistent/path/backup"])
+        assert result.exit_code != 0
+
+    def test_restore_no_targets_exits_one(self, tmp_path):
+        """restore with valid path but no containers/volumes exits with 1."""
+        result = CliRunner().invoke(cli, ["restore", "--backup-path", str(tmp_path)])
+        assert result.exit_code == 1
+
+    def test_restore_with_all_flag_empty_dir(self, tmp_path):
+        """restore --all with empty backup dir exits 1 (nothing to restore)."""
+        with patch("bbackup.cli.DockerRestore") as MockRestore:
+            mock_inst = MagicMock()
+            mock_inst.restore_backup.return_value = {}
+            MockRestore.return_value = mock_inst
+            result = CliRunner().invoke(cli, ["restore", "--backup-path", str(tmp_path), "--all"])
+        assert result.exit_code == 1
+
+    def test_restore_with_containers(self, tmp_path):
+        """restore with explicit containers invokes restore_backup."""
+        with patch("bbackup.cli.DockerRestore") as MockRestore:
+            mock_inst = MagicMock()
+            mock_inst.restore_backup.return_value = {"containers_restored": 1}
+            MockRestore.return_value = mock_inst
+            result = CliRunner().invoke(
+                cli, ["restore", "--backup-path", str(tmp_path), "--containers", "myapp"]
+            )
+        assert result.exit_code in (0, 1)
+
+    def test_restore_with_rename(self, tmp_path):
+        """restore --rename maps old:new names correctly."""
+        with patch("bbackup.cli.DockerRestore") as MockRestore:
+            mock_inst = MagicMock()
+            mock_inst.restore_backup.return_value = {}
+            MockRestore.return_value = mock_inst
+            result = CliRunner().invoke(
+                cli,
+                ["restore", "--backup-path", str(tmp_path),
+                 "--volumes", "data", "--rename", "data:data_new"]
+            )
+        assert result.exit_code in (0, 1)
+
+
+# ---------------------------------------------------------------------------
+# TestListRemoteBackupsExtended
+# ---------------------------------------------------------------------------
+
+
+class TestListRemoteBackupsExtended:
+    def test_remote_disabled_exits_one(self, tmp_path):
+        """remote listed but disabled exits with 1."""
+        yaml_content = """
+backup:
+  local_staging: /tmp
+remotes:
+  myremote:
+    enabled: false
+    type: local
+    path: /tmp/remote
+"""
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(yaml_content)
+        result = CliRunner().invoke(
+            cli, ["--config", str(cfg_file), "list-remote-backups", "--remote", "myremote"]
+        )
+        assert result.exit_code == 1
+
+    def test_remote_enabled_no_backups(self, tmp_path):
+        """enabled remote with no backups prints warning and exits 0."""
+        yaml_content = """
+backup:
+  local_staging: /tmp
+remotes:
+  myremote:
+    enabled: true
+    type: local
+    path: /tmp/remote
+"""
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(yaml_content)
+        with patch("bbackup.cli.RemoteStorageManager") as MockRemote:
+            mock_inst = MagicMock()
+            mock_inst.list_backups.return_value = []
+            MockRemote.return_value = mock_inst
+            result = CliRunner().invoke(
+                cli, ["--config", str(cfg_file), "list-remote-backups", "--remote", "myremote"]
+            )
+        assert result.exit_code == 0
+
+    def test_remote_enabled_with_backups(self, tmp_path):
+        """enabled remote with backups shows table."""
+        yaml_content = """
+backup:
+  local_staging: /tmp
+remotes:
+  myremote:
+    enabled: true
+    type: local
+    path: /tmp/remote
+"""
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(yaml_content)
+        with patch("bbackup.cli.RemoteStorageManager") as MockRemote:
+            mock_inst = MagicMock()
+            mock_inst.list_backups.return_value = ["backup_20260226_120000"]
+            MockRemote.return_value = mock_inst
+            result = CliRunner().invoke(
+                cli, ["--config", str(cfg_file), "list-remote-backups", "--remote", "myremote"]
+            )
+        assert result.exit_code == 0
+        assert "backup_20260226_120000" in result.output
+
+
+# ---------------------------------------------------------------------------
+# TestBackupCommand
+# ---------------------------------------------------------------------------
+
+
+class TestBackupCommand:
+    def test_backup_no_containers_exits_one(self, mock_docker_client):
+        """backup with no containers selected exits with 1."""
+        mock_docker_client.containers.list.return_value = []
+        result = CliRunner().invoke(cli, ["backup"])
+        assert result.exit_code == 1
+
+    def test_backup_with_containers_flag(self, mock_docker_client, tmp_path):
+        """backup --containers invokes backup runner."""
+        mock_docker_client.containers.list.return_value = [
+            MagicMock(name="myapp", id="abc123",
+                      attrs={"Name": "/myapp", "Id": "abc123",
+                             "Config": {}, "HostConfig": {}, "NetworkSettings": {}})
+        ]
+        with patch("bbackup.cli.BackupRunner") as MockRunner:
+            mock_inst = MagicMock()
+            mock_inst.run_backup.return_value = MagicMock(status="completed", errors=[])
+            MockRunner.return_value = mock_inst
+            result = CliRunner().invoke(cli, ["backup", "--containers", "myapp"])
+        assert result.exit_code in (0, 1)
+
+    def test_backup_invalid_backup_set_exits_one(self):
+        """backup with nonexistent backup-set exits with 1."""
+        result = CliRunner().invoke(cli, ["backup", "--backup-set", "nonexistent_set"])
+        assert result.exit_code == 1

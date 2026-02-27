@@ -8,8 +8,7 @@ Last Updated: 2026-02-26
 
 import json
 import time
-from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import pytest
 from docker.errors import DockerException, APIError
