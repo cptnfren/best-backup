@@ -1,201 +1,166 @@
-# Installation Guide - System Command Registration
+# Installation guide
 
-This guide explains how to install bbackup so it's available as a system command from anywhere.
+> All supported ways to install bbackup and register the `bbackup` and `bbman` commands.
 
-## Quick Install (Recommended)
+---
 
-The easiest way to install bbackup as a system command:
+## Recommended: pip install (editable mode)
 
 ```bash
-# Navigate to the repository
 cd best-backup
-
-# Install in development mode (editable, changes take effect immediately)
-pip3 install -e .
-
-# Or install normally (copies files)
-pip3 install .
+pip install -e .
 ```
 
-After installation, both commands are available system-wide:
-- `bbackup` - Main backup application
-- `bbman` - Management wrapper
-
-## Verify Installation
+Editable mode means any changes you make to the source take effect immediately without reinstalling. Both `bbackup` and `bbman` are registered as system commands.
 
 ```bash
-# Check if commands are available
+# Verify
 which bbackup
 which bbman
-
-# Test commands
 bbackup --version
-bbackup --help
-
 bbman --version
-bbman --help
 ```
 
-## Installation Methods
+---
 
-### Method 1: pip install (Recommended)
+## Normal pip install (production / stable)
 
-**Development Mode (Editable):**
 ```bash
-pip3 install -e .
+pip install .
 ```
-- Installs as system command
-- Changes to source code take effect immediately
-- Best for development
 
-**Normal Install:**
+Copies files to site-packages. Requires reinstall to pick up source changes.
+
+---
+
+## User install (no sudo required)
+
 ```bash
-pip3 install .
+pip install --user -e .
 ```
-- Installs as system command
-- Copies files to site-packages
-- Best for production
 
-**User Install (No sudo required):**
+Installs to `~/.local/bin`. If that directory is not on your PATH:
+
 ```bash
-pip3 install --user -e .
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/.local/bin:$PATH"
+source ~/.bashrc
 ```
-- Installs to user directory (`~/.local/bin`)
-- No sudo required
-- May need to add `~/.local/bin` to PATH
 
-### Method 2: Create Symlinks (Quick, No Installation)
+---
+
+## Symlinks (no install, quick)
+
+If you want to run from the repo directory without `pip`:
 
 ```bash
-# Make scripts executable
 chmod +x bbackup.py bbman.py
 
-# Create symlinks in /usr/local/bin (requires sudo)
 sudo ln -s $(pwd)/bbackup.py /usr/local/bin/bbackup
 sudo ln -s $(pwd)/bbman.py /usr/local/bin/bbman
 ```
 
-**Or for user-only (no sudo):**
-```bash
-# Create ~/bin if it doesn't exist
-mkdir -p ~/bin
+For a user-only version without `sudo`:
 
-# Create symlinks
+```bash
+mkdir -p ~/bin
 ln -s $(pwd)/bbackup.py ~/bin/bbackup
 ln -s $(pwd)/bbman.py ~/bin/bbman
 
-# Add to PATH (add to ~/.bashrc or ~/.zshrc)
+# Add ~/bin to PATH if not already there
 export PATH="$HOME/bin:$PATH"
 ```
 
-### Method 3: Add to PATH
+---
+
+## Add to PATH (run directly from repo)
 
 ```bash
-# Add to ~/.bashrc or ~/zshrc
 export PATH="$PATH:/path/to/best-backup"
-
-# Make scripts executable
 chmod +x /path/to/best-backup/bbackup.py
 chmod +x /path/to/best-backup/bbman.py
-
-# Reload shell
-source ~/.bashrc  # or source ~/.zshrc
 ```
 
-## Launch Commands
+Add that export line to your shell profile to make it permanent.
 
-Once installed, you can launch from anywhere:
-
-```bash
-# Main backup application
-bbackup backup
-bbackup list-containers
-bbackup restore --backup-path /path/to/backup --all
-
-# Management wrapper
-bbman setup
-bbman health
-bbman run backup --containers my_container
-```
+---
 
 ## Uninstall
 
 If installed via pip:
 
 ```bash
-pip3 uninstall bbackup
+pip uninstall bbackup
 ```
 
 If installed via symlinks:
 
 ```bash
-sudo rm /usr/local/bin/bbackup
-sudo rm /usr/local/bin/bbman
+sudo rm /usr/local/bin/bbackup /usr/local/bin/bbman
+# or for user symlinks:
+rm ~/bin/bbackup ~/bin/bbman
 ```
 
-## Troubleshooting
+---
 
-### Command Not Found
+## Python version
 
-If `bbackup` or `bbman` commands are not found:
-
-1. **Check if installed:**
-   ```bash
-   pip3 show bbackup
-   ```
-
-2. **Check PATH:**
-   ```bash
-   echo $PATH
-   which bbackup
-   ```
-
-3. **Reinstall:**
-   ```bash
-   pip3 install -e . --force-reinstall
-   ```
-
-### Permission Denied
-
-If you get permission errors:
-
-1. **Use user install:**
-   ```bash
-   pip3 install --user -e .
-   ```
-
-2. **Or use sudo:**
-   ```bash
-   sudo pip3 install -e .
-   ```
-
-3. **Or fix permissions:**
-   ```bash
-   sudo chmod +x bbackup.py bbman.py
-   ```
-
-### Python Version Issues
-
-Ensure Python 3.10+ is used:
+Python 3.10+ is required. Check with:
 
 ```bash
-# Check Python version
 python3 --version
+```
 
-# Use specific Python version if needed
+If you have multiple Python versions and need to target a specific one:
+
+```bash
 python3.10 -m pip install -e .
 ```
 
-## Post-Installation Setup
+---
 
-After installation, run the setup wizard:
+## Troubleshooting
+
+**`bbackup: command not found` after pip install**
+
+Check that pip's bin directory is on your PATH:
+
+```bash
+pip show bbackup | grep Location
+# Add that location's ../bin to PATH if needed
+```
+
+Or try:
+
+```bash
+pip install --user -e .
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+**Permission denied**
+
+```bash
+pip install --user -e .   # No sudo needed
+```
+
+**Packages fail to install**
+
+Make sure pip is up to date:
+
+```bash
+pip install --upgrade pip
+pip install -e .
+```
+
+---
+
+## Post-install setup
+
+Once the commands are available, run the setup wizard:
 
 ```bash
 bbman setup
 ```
 
-This will:
-- Check Docker access
-- Verify dependencies
-- Create configuration file
-- Set up encryption keys (optional)
+See [QUICKSTART.md](QUICKSTART.md) for what to do next.

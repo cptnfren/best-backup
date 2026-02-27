@@ -1,101 +1,83 @@
-# Scripts Directory
+# Scripts
 
-Utility scripts for testing and development.
+> Utility scripts for testing and development. Not required for normal use.
 
-## Available Scripts
+---
+
+## Available scripts
 
 ### `create_sandbox.py`
-Generates a comprehensive testing sandbox filesystem with diverse file types, realistic directory structures, and safely harvested system files. Perfect for testing backup, restore, and incremental backup operations.
 
-**Features:**
-- Creates 13,000+ files across diverse file types
-- Generates realistic directory structures (archives, projects, documents, media)
-- Safely harvests system files (read-only, no modifications)
-- Real-time progress reporting with Rich library
-- Configurable via CLI arguments or YAML config file
-- Generates comprehensive README.md report
+Generates a test filesystem with 13,000+ files across realistic directory structures (archives, projects, documents, media). Useful for testing backup, restore, and incremental backup behavior without touching real data.
 
-**Quick Start:**
 ```bash
-# Default sandbox (minimal input)
 python scripts/create_sandbox.py --output /tmp/bbackup_sandbox
-
-# Quick mode (fewer files, faster)
-python scripts/create_sandbox.py --output /tmp/bbackup_sandbox --quick
-
-# Custom configuration
-python scripts/create_sandbox.py --output /tmp/test_sandbox --file-count 5000
-
-# With config file
-python scripts/create_sandbox.py --config scripts/sandbox_config.yaml
+python scripts/create_sandbox.py --output /tmp/bbackup_sandbox --quick   # Fewer files, faster
+python scripts/create_sandbox.py --output /tmp/bbackup_sandbox --file-count 5000
 ```
 
-**Options:**
-- `--output, -o` - Output directory (default: `/tmp/bbackup_sandbox`)
-- `--config, -c` - Configuration file path (YAML)
-- `--file-count` - Target total file count
-- `--size-mb` - Target total size in MB
-- `--harvest-system/--no-harvest-system` - Enable/disable system file harvesting
-- `--quick` - Quick mode (fewer files, faster generation)
-- `--verbose, -v` - Verbose output
+Options:
 
-**Configuration File:**
-See `sandbox_config.yaml.example` for advanced configuration options including:
-- File counts per category
-- Directory structure customization
-- Large file sizes
-- System file harvesting paths
+| Flag | Description |
+|---|---|
+| `--output, -o` | Output directory (default: `/tmp/bbackup_sandbox`) |
+| `--config, -c` | YAML config file for advanced options |
+| `--file-count` | Target file count |
+| `--size-mb` | Target total size in MB |
+| `--harvest-system` | Include read-only copies of real system files |
+| `--quick` | Reduced file count for faster runs |
+| `--verbose, -v` | Verbose output |
 
-**Output:**
-- Creates sandbox directory with diverse file structure
-- Generates `README.md` with complete statistics
-- Provides real-time progress updates during generation
-- Safe file harvesting (read-only, originals untouched)
-
-### `populate_postgres.sh`
-Populates a PostgreSQL test container with sample data for testing backup/restore operations.
-
-**Usage:**
-```bash
-./scripts/populate_postgres.sh
-```
-
-### `test_backup_with_locks.sh`
-Tests backup operations with active database locks to verify backup integrity during concurrent operations.
-
-**Usage:**
-```bash
-./scripts/test_backup_with_locks.sh
-```
+---
 
 ### `test_sandbox_backups.py`
-Automated test script to run various backup scenarios against the sandbox and log issues.
 
-**Usage:**
+Runs backup scenarios against the sandbox created by `create_sandbox.py` and logs results.
+
 ```bash
 python scripts/test_sandbox_backups.py
 ```
 
-### `get_github_key.sh`
-Helper script to fetch SSH public keys from a GitHub user profile.
+---
 
-**Usage:**
+### `populate_postgres.sh`
+
+Populates a PostgreSQL test container with sample data for testing backup/restore with a live database.
+
 ```bash
-./scripts/get_github_key.sh USERNAME
+./scripts/populate_postgres.sh
 ```
+
+---
+
+### `test_backup_with_locks.sh`
+
+Tests backup behavior when the database has active locks, verifying that backups complete cleanly under concurrent write load.
+
+```bash
+./scripts/test_backup_with_locks.sh
+```
+
+---
+
+### `get_github_key.sh`
+
+Fetches SSH public keys from a GitHub user profile.
+
+```bash
+./scripts/get_github_key.sh YOUR_USERNAME
+```
+
+---
 
 ### `upload_key_to_github.sh`
-Helper script to upload encryption keys to GitHub gist.
 
-**Usage:**
+Uploads an encryption public key to a GitHub Gist.
+
 ```bash
-./scripts/upload_key_to_github.sh /path/to/key.pem
+./scripts/upload_key_to_github.sh /path/to/backup_public.pem
 ```
 
-## Notes
+---
 
-- All scripts are executable and can be run directly
-- Scripts are designed for testing and development purposes
-- Ensure Docker is running before executing database-related scripts
-- `create_sandbox.py` requires Python 3.8+ and dependencies from requirements.txt
-- Python scripts require dependencies from `requirements.txt`
+Back to [README.md](../README.md).

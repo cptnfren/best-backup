@@ -1,148 +1,91 @@
-# bbackup - Docker Backup Tool
+# bbackup
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A comprehensive, production-ready Docker backup solution with a beautiful Rich TUI interface. Backs up Docker containers, volumes, networks, and configurations with support for incremental backups, remote storage, encryption, and intelligent rotation policies.
+A Docker backup tool with a full-screen terminal UI. It handles containers, volumes, networks, and configurations in one shot, with incremental backups, encryption at rest, and automatic rotation to local or remote storage.
 
-## ✨ Features
+---
 
-### Core Functionality
-- 🎨 **Rich TUI Interface** - Beautiful BTOP-like terminal interface with real-time metrics
-- 🐳 **Full Docker Integration** - Complete backup of containers, volumes, networks, and metadata
-- 📦 **Hybrid Backup Strategy** - rsync for volumes (efficient), tar for metadata (structured)
-- 🔄 **Incremental Backups** - Only backup changes using rsync `--link-dest` for space efficiency
-- 🔐 **Data Encryption** - AES-256-GCM (symmetric) and RSA-4096 (asymmetric) encryption at rest
-- ☁️ **Remote Storage** - Google Drive (rclone), SFTP, local directories
-- 🔁 **Backup Rotation** - Time-based retention with automatic storage quota management
-- 📊 **Real-Time Metrics** - Transfer speed, bytes transferred, file counts, progress tracking
-- ⚙️ **Flexible Configuration** - YAML config files with CLI overrides
-- 🎯 **Selective Backup** - Choose specific containers, volumes, or backup sets
-- 📝 **Comprehensive Logging** - File-based logging with rotation
-- ⌨️ **Interactive Controls** - Q (quit), P (pause), S (skip), H (help)
-- 🔧 **Management Wrapper** - `bbman.py` for setup, health checks, updates, and diagnostics
+## What it does
 
-### Advanced Features
-- **Restore Functionality** - Full restore of containers, volumes, and networks
-- **Backup Sets** - Predefined groups of containers for organized backups
-- **Encryption Key Management** - GitHub integration for easy key deployment
-- **File-Level Version Checking** - Git-compatible checksums for update detection
-- **Health Diagnostics** - Comprehensive system health checks
-- **Automatic Cleanup** - Intelligent cleanup of old backups and logs
+Run `bbackup backup` and you get an interactive container picker, a live BTOP-style dashboard while the backup runs, and a finished archive that can be encrypted and shipped to Google Drive, SFTP, or a local path. The companion `bbman` command handles setup, health checks, dependency installs, and self-updates so day-to-day maintenance stays out of the way.
 
-## 📋 Table of Contents
+## Features
 
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Configuration](#configuration)
-- [Usage](#usage)
-- [Features in Detail](#features-in-detail)
-- [Management Wrapper](#management-wrapper)
-- [Troubleshooting](#troubleshooting)
-- [Development](#development)
-- [License](#license)
+| | |
+|---|---|
+| ✅ Rich TUI | BTOP-style live dashboard with real-time transfer metrics |
+| ✅ Incremental backups | rsync `--link-dest` so unchanged data is hardlinked, not copied |
+| ✅ Encryption | AES-256-GCM (symmetric) or RSA-4096 (asymmetric) at rest |
+| ✅ Remote storage | Google Drive via rclone, SFTP, or local directory |
+| ✅ Rotation | Time-based daily/weekly/monthly retention with quota enforcement |
+| ✅ Full restore | Containers, volumes, and networks, with optional rename on restore |
+| ✅ Backup sets | Named groups of containers defined in config for repeatable runs |
+| ✅ Management CLI | `bbman` for setup, health, updates, cleanup, and diagnostics |
 
-## 🚀 Installation
+---
 
-### Prerequisites
+## Requirements
 
 - Python 3.10+
-- Docker (with Docker socket access)
-- rsync (for volume backups)
-- rclone (optional, for Google Drive support)
+- Docker (with socket access for your user)
+- `rsync` (system package, for volume backups)
+- `rclone` (optional, for Google Drive)
 
-### Quick Install (Recommended)
+---
 
-Use the management wrapper for the easiest setup:
+## Installation
 
 ```bash
-# Clone or navigate to the repository
+# Clone the repo
+git clone https://github.com/YOUR_USERNAME/best-backup.git
 cd best-backup
 
-# Make management script executable
-chmod +x bbman.py
-
-# Run interactive setup wizard
-python3 bbman.py setup
+# Install Python dependencies and register system commands
+pip install -e .
 ```
 
-The setup wizard will:
-- Check Docker access
-- Verify system dependencies
-- Check Python packages
-- Create configuration file
-- Optionally set up encryption keys
+Both `bbackup` and `bbman` will be available system-wide after this.
 
-### Manual Installation
+For other installation methods (symlinks, PATH-only, user install), see [INSTALL.md](INSTALL.md).
+
+---
+
+## Quick start
 
 ```bash
-# Install Python dependencies
-pip install -r requirements.txt
+# First-time setup (checks Docker, dependencies, creates config)
+bbman setup
 
-# Make scripts executable
-chmod +x bbackup.py bbman.py
+# Run an interactive backup
+bbackup backup
 
-# Initialize configuration
-python3 bbackup.py init-config
+# Or target specific containers
+bbackup backup --containers myapp mydb
 ```
 
-### Install as System Command
+See [QUICKSTART.md](QUICKSTART.md) for a complete walk-through including config, remote storage, and encryption setup.
 
-**Recommended:** Install via pip to register as system commands:
+---
 
-```bash
-# Development mode (editable, changes take effect immediately)
-pip3 install -e .
+## Configuration
 
-# Or normal install (copies files)
-pip3 install .
-```
+bbackup looks for config in this order:
 
-After installation, both `bbackup` and `bbman` are available as system commands from anywhere.
+1. `~/.config/bbackup/config.yaml`
+2. `~/.bbackup/config.yaml`
+3. `/etc/bbackup/config.yaml`
+4. `./config.yaml`
 
-**Alternative:** Create symlinks (quick, no installation):
-```bash
-# Make scripts executable
-chmod +x bbackup.py bbman.py
-
-# Create symlinks (requires sudo)
-sudo ln -s $(pwd)/bbackup.py /usr/local/bin/bbackup
-sudo ln -s $(pwd)/bbman.py /usr/local/bin/bbman
-```
-
-**Verify installation:**
-```bash
-which bbackup
-which bbman
-bbackup --version
-bbman --version
-```
-
-## 🎯 Quick Start
-
-### 1. Initial Setup
-
-```bash
-# Run setup wizard (recommended)
-python3 bbman.py setup
-
-# Or manually initialize config
-python3 bbackup.py init-config
-```
-
-### 2. Edit Configuration
-
-Edit `~/.config/bbackup/config.yaml`:
+A full annotated example is in [`config.yaml.example`](config.yaml.example). The minimal pieces you need:
 
 ```yaml
 backup:
   local_staging: /tmp/bbackup_staging
   backup_sets:
     production:
-      description: "Production containers"
-      containers:
-        - container1
-        - container2
+      containers: [myapp, mydb, nginx]
       scope:
         volumes: true
         configs: true
@@ -153,589 +96,162 @@ remotes:
     type: local
     path: ~/backups/docker
 ```
-
-### 3. Run Your First Backup
-
-```bash
-# Interactive mode (select containers from menu)
-python3 bbackup.py backup
-
-# Or use management wrapper
-python3 bbman.py run backup
-
-# Backup specific containers
-python3 bbackup.py backup --containers container1 container2
-
-# Use backup set
-python3 bbackup.py backup --backup-set production
-```
-
-## ⚙️ Configuration
-
-### Configuration File Locations
-
-bbackup looks for configuration in this order:
-1. `~/.config/bbackup/config.yaml` (recommended)
-2. `~/.bbackup/config.yaml`
-3. `/etc/bbackup/config.yaml`
-4. `./config.yaml` (current directory)
-
-### Configuration Sections
-
-See `config.yaml.example` for a complete example. Key sections:
-
-**Backup Sets:**
-```yaml
-backup:
-  backup_sets:
-    production:
-      description: "Production containers"
-      containers:
-        - dms
-        - minio
-        - npm
-      scope:
-        volumes: true
-        configs: true
-        networks: true
-```
-
-**Remote Storage:**
-```yaml
-remotes:
-  gdrive:
-    enabled: true
-    type: rclone
-    remote_name: gdrive
-    path: /backups/docker
-  
-  sftp_server:
-    enabled: true
-    type: sftp
-    host: backup.example.com
-    port: 22
-    user: backup
-    key_file: ~/.ssh/backup_key
-    path: /backups/docker
-```
-
-**Retention Policy:**
-```yaml
-retention:
-  daily: 7
-  weekly: 4
-  monthly: 12
-  max_storage_gb: 100
-  cleanup_threshold_percent: 90
-```
-
-**Encryption:**
-```yaml
-encryption:
-  enabled: true
-  method: asymmetric
-  asymmetric:
-    public_key: github:USERNAME  # Auto-resolves from GitHub
-    private_key: ~/.config/bbackup/backup_private.pem
-```
-
-## 📖 Usage
-
-### CLI Commands
-
-#### Backup Operations
-
-```bash
-# Interactive backup (default)
-bbackup backup
-
-# Backup specific containers
-bbackup backup --containers dms minio npm
-
-# Use backup set
-bbackup backup --backup-set production
-
-# Configuration only (no volumes)
-bbackup backup --config-only
-
-# Volumes only (no configs)
-bbackup backup --volumes-only
-
-# Incremental backup
-bbackup backup --incremental
-
-# Skip networks
-bbackup backup --no-networks
-
-# Upload to specific remotes
-bbackup backup --remote gdrive --remote sftp_server
-```
-
-#### Restore Operations
-
-```bash
-# Restore all from backup
-bbackup restore --backup-path /path/to/backup --all
-
-# Restore specific containers
-bbackup restore --backup-path /path/to/backup --containers container1 container2
-
-# Restore with renaming
-bbackup restore --backup-path /path/to/backup --containers old_name --rename old_name:new_name
-
-# Restore volumes only
-bbackup restore --backup-path /path/to/backup --volumes volume1 volume2
-```
-
-#### Information Commands
-
-```bash
-# List all containers
-bbackup list-containers
-
-# List backup sets
-bbackup list-backup-sets
-
-# List local backups
-bbackup list-backups
-
-# List backups on remote storage
-bbackup list-remote-backups --remote gdrive
-```
-
-#### Encryption Setup
-
-```bash
-# Initialize symmetric encryption
-bbackup init-encryption --method symmetric
-
-# Initialize asymmetric encryption
-bbackup init-encryption --method asymmetric --algorithm rsa-4096
-
-# Upload public key to GitHub
-bbackup init-encryption --method asymmetric --upload-github
-```
-
-### CLI Options
-
-```
-Global Options:
-  --config, -c         Path to configuration file
-  --version            Show version information
-
-Backup Options:
-  --containers, -C     Container names to backup (multiple)
-  --backup-set, -s     Use predefined backup set
-  --config-only        Backup only configurations
-  --volumes-only       Backup only volumes
-  --no-networks        Skip network backups
-  --incremental, -i    Use incremental backup (rsync --link-dest)
-  --remote, -r         Remote storage destinations (multiple)
-  --interactive, -I    Enable interactive container selection (default: on)
-  --no-interactive     Disable interactive mode
-
-Restore Options:
-  --backup-path        Path to backup directory (required)
-  --all                Restore everything
-  --containers, -C     Restore specific containers
-  --volumes, -V        Restore specific volumes
-  --networks, -N       Restore specific networks
-  --rename             Rename on restore: old_name:new_name
-
-List-Backups Options:
-  --backup-dir, -d     Directory to search for backups
-```
-
-## 🎨 Features in Detail
-
-### Rich TUI Interface
-
-The TUI provides a BTOP-like interface with:
-
-- **Real-Time Metrics:**
-  - Transfer speed (MB/s or GB/s)
-  - Bytes transferred (KB/MB/GB)
-  - Files transferred count
-  - Current file being processed
-  - Progress percentage
-  - Elapsed time and ETA
-
-- **Live Dashboard:**
-  - Header with status and metrics
-  - Containers panel with backup status
-  - Volumes panel with backup status
-  - Progress bar with detailed information
-  - Status panel with errors/warnings
-  - Footer with keyboard controls
-
-- **Keyboard Controls:**
-  - **Q** - Quit/Cancel backup
-  - **P** - Pause/Resume backup
-  - **S** - Skip current item (prints to console; modal overlay planned)
-  - **H** - Show help screen (prints to console; modal overlay planned)
-
-### Backup Strategy
-
-#### Hybrid Approach
-
-- **Volumes**: Backed up using `rsync` for efficiency with large files
-  - Supports incremental backups via `--link-dest`
-  - Handles sparse files and large datasets efficiently
-  - Real-time progress tracking with transfer speed
-
-- **Metadata**: Backed up using `tar` with compression
-  - Container configurations (docker inspect)
-  - Network configurations
-  - Container logs
-  - Backup metadata
-
-#### Incremental Backups
-
-When `--incremental` is used or `incremental.enabled: true` in config:
-- rsync uses `--link-dest` to reference previous backups
-- Only changed files are copied
-- Unchanged files are hardlinked (saves space)
-- Works best for volumes with large, slowly-changing data
-- Automatically finds previous backup for each volume
-
-### Encryption
-
-bbackup supports encryption at rest with two methods:
-
-#### Symmetric Encryption (AES-256-GCM)
-- Single key for encryption/decryption
-- Faster performance
-- Best for single-server deployments
-
-#### Asymmetric Encryption (RSA-4096)
-- Public/private key pair
-- Public key can be safely shared
-- Best for multi-server deployments
-- Supports GitHub integration for easy key deployment
-
-**GitHub Integration:**
-```yaml
-encryption:
-  enabled: true
-  method: asymmetric
-  asymmetric:
-    public_key: github:USERNAME  # Auto-resolves from GitHub
-```
-
-### Remote Storage
-
-#### Google Drive (rclone)
-
-1. Configure rclone:
-   ```bash
-   rclone config
-   ```
-
-2. Add to config:
-   ```yaml
-   remotes:
-     gdrive:
-       enabled: true
-       type: rclone
-       remote_name: gdrive
-       path: /backups/docker
-   ```
-
-#### SFTP
-
-```yaml
-remotes:
-  ssh_server:
-    enabled: true
-    type: sftp
-    host: backup.example.com
-    port: 22
-    user: backup
-    key_file: ~/.ssh/backup_key
-    path: /backups/docker
-```
-
-#### Local Directory
-
-```yaml
-remotes:
-  local:
-    enabled: true
-    type: local
-    path: ~/backups/docker
-```
-
-### Backup Rotation
-
-#### Time-Based Retention
-
-- **Daily**: Keep N most recent daily backups
-- **Weekly**: Keep N weekly backups (typically Sunday backups)
-- **Monthly**: Keep N monthly backups (first of month)
-- Automatically integrated into backup workflow
-
-#### Storage Quota Management
-
-When storage quota is configured:
-- Warns when storage exceeds warning threshold
-- Automatically cleans up old backups when cleanup threshold is reached
-- Deletes oldest backups first (configurable strategy)
-- Runs automatically after each backup upload
-
-## 🔧 Management Wrapper
-
-The `bbman.py` wrapper provides comprehensive application management:
-
-### Setup
-
-```bash
-bbman setup
-```
-
-Interactive setup wizard for first-time configuration.
-
-### Health Check
-
-```bash
-bbman health
-```
-
-Comprehensive health check:
-- Docker daemon accessibility
-- System tools (rsync, tar, rclone)
-- Python dependencies
-- Configuration file validity
-- Directory permissions
-
-### Dependency Management
-
-```bash
-bbman check-deps
-bbman check-deps --install  # Install missing packages
-```
-
-### Configuration Validation
-
-```bash
-bbman validate-config
-```
-
-### Backup Status
-
-```bash
-bbman status
-```
-
-Show backup status and history.
-
-### Cleanup
-
-```bash
-bbman cleanup
-bbman cleanup --staging-days 7 --log-days 30
-bbman cleanup --yes  # Skip confirmation
-```
-
-### Diagnostics
-
-```bash
-bbman diagnostics
-bbman diagnostics --output report.txt
-```
-
-### Update Management
-
-```bash
-# Check for updates
-bbman check-updates
-
-# Update application
-bbman update
-bbman update --method git  # Use Git method
-bbman update --yes  # Skip confirmation
-```
-
-### Repository URL Management
-
-```bash
-# Show current repository URL
-bbman repo-url
-
-# Set repository URL
-bbman repo-url --url https://github.com/YOUR_USERNAME/best-backup
-```
-
-### Run Application
-
-```bash
-# Launch bbackup through wrapper
-bbman run backup --containers my_container
-bbman run list-containers
-```
-
-For detailed management guide, see [docs/MANAGEMENT_GUIDE.md](docs/MANAGEMENT_GUIDE.md).
-
-## 🐛 Troubleshooting
-
-### Docker Permission Issues
-
-```bash
-# Add user to docker group
-sudo usermod -aG docker $USER
-# Log out and back in, or:
-newgrp docker
-```
-
-### rclone Not Found
-
-```bash
-# Install rclone
-curl https://rclone.org/install.sh | sudo bash
-```
-
-### rsync Not Available
-
-```bash
-# Install rsync
-sudo apt-get install rsync  # Debian/Ubuntu
-sudo yum install rsync      # RHEL/CentOS
-```
-
-### TUI Not Displaying
-
-The TUI requires an interactive terminal. If output is piped, it will display in non-screen mode. Run directly in a terminal:
-
-```bash
-# This will show full-screen TUI
-python3 bbackup.py backup
-
-# This will show TUI but truncated
-python3 bbackup.py backup | head -20
-```
-
-### Configuration Not Found
-
-```bash
-# Initialize configuration
-python3 bbackup.py init-config
-
-# Or use management wrapper
-python3 bbman.py setup
-```
-
-## 🛠️ Development
-
-### Running from Source
-
-```bash
-# Install in development mode
-pip install -e .
-
-# Or run directly
-python3 bbackup.py backup
-```
-
-### Testing
-
-```bash
-# Test Docker connection
-python3 -c "from bbackup.docker_backup import DockerBackup; from bbackup.config import Config; DockerBackup(Config())"
-
-# Test config loading
-python3 -c "from bbackup.config import Config; c = Config(); print(c.data)"
-
-# Run health check
-python3 bbman.py health
-```
-
-### Project Structure
-
-```
-best-backup/
-├── bbackup/                # Main package
-│   ├── __init__.py
-│   ├── cli.py              # bbackup CLI commands
-│   ├── config.py           # Configuration loading, all dataclasses
-│   ├── docker_backup.py    # Docker backup via temp containers
-│   ├── backup_runner.py    # Backup workflow + BackupStatus tracking
-│   ├── restore.py          # Restore operations
-│   ├── tui.py              # Rich TUI, live dashboard, BackupStatus
-│   ├── remote.py           # Remote storage (local/rclone/SFTP)
-│   ├── rotation.py         # Retention policies, quota cleanup
-│   ├── encryption.py       # AES-256-GCM + RSA/ECDSA encryption
-│   ├── logging.py          # Rotating file logging, get_logger()
-│   ├── bbman_entry.py      # Console script shim for bbman
-│   └── management/         # Lifecycle management subpackage
-│       ├── first_run.py    # First-run detection
-│       ├── setup_wizard.py # Interactive first-time setup
-│       ├── health.py       # Docker/system health checks
-│       ├── diagnostics.py  # Diagnostic report generation
-│       ├── dependencies.py # External dependency checks
-│       ├── updater.py      # Self-update from repo
-│       ├── version.py      # Version check, checksum
-│       ├── repo.py         # Repo URL management
-│       ├── config.py       # Management-layer config
-│       ├── status.py       # Status reporting utilities
-│       ├── cleanup.py      # Temp file cleanup
-│       └── utils.py        # Shared utilities
-├── bbackup.py              # bbackup entry point
-├── bbman.py                # bbman management CLI
-├── config.yaml.example     # Example configuration
-├── requirements.txt        # Python dependencies
-├── setup.py                # Package setup
-└── README.md               # This file
-```
-
-## 📚 Additional Documentation
-
-- [Quick Start Guide](QUICKSTART.md) - 5-minute setup guide
-- [Quick Install Guide](QUICK_INSTALL.md) - Installation instructions
-- [Management Guide](docs/MANAGEMENT_GUIDE.md) - Complete bbman.py documentation
-- [Encryption Guide](docs/ENCRYPTION_GUIDE.md) - Encryption setup and key management
-- [Project Summary](PROJECT_SUMMARY.md) - Architecture and design decisions
-
-## 🗺️ Roadmap
-
-### Completed ✅
-- [x] Rich TUI interface with real-time metrics
-- [x] Incremental backups with --link-dest
-- [x] Backup rotation and retention
-- [x] Logging system
-- [x] Volume compression
-- [x] Upload progress tracking
-- [x] List remote backups command
-- [x] Skip functionality (S key) - console output; modal overlay planned
-- [x] Help screen (H key) - console output; modal overlay planned
-- [x] Backup encryption (AES-256-GCM, RSA-4096)
-- [x] Restore functionality
-- [x] Management wrapper (bbman.py)
-- [x] Real-time transfer metrics
-- [x] GitHub key integration
-
-### Planned
-- [ ] Backup verification/checksums
-- [ ] Email notifications
-- [ ] Webhook support
-- [ ] Backup scheduling (cron integration)
-- [ ] Multi-server backup coordination
-- [ ] Backup comparison/diff
-- [ ] Web UI for backup management
-
-## 📄 License
-
-This project is part of the Linux Tools repository.
-
-## 🤝 Contributing
-
-This tool is designed to be extracted into its own GitHub repository. Contributions welcome!
-
-## 🙏 Acknowledgments
-
-- Built with [Rich](https://github.com/Textualize/rich) for beautiful terminal interfaces
-- Uses [Click](https://github.com/pallets/click) for CLI framework
-- Docker integration via [docker-py](https://github.com/docker/docker-py)
 
 ---
 
-**Version:** 1.0.0  
-**Last Updated:** 2026-01-15
+## CLI reference
+
+### `bbackup` commands
+
+```bash
+bbackup backup                          # Interactive backup with TUI
+bbackup backup --backup-set production  # Use a named backup set
+bbackup backup --containers app db      # Pick specific containers
+bbackup backup --incremental            # rsync --link-dest mode
+bbackup backup --config-only            # Skip volumes
+bbackup backup --volumes-only           # Skip configs
+bbackup backup --no-networks            # Skip network configs
+bbackup backup --remote gdrive          # Upload to specific remote
+
+bbackup restore --backup-path /path/to/backup --all
+bbackup restore --backup-path /path --containers app --rename app:app_v2
+
+bbackup list-containers
+bbackup list-backup-sets
+bbackup list-backups
+bbackup list-remote-backups --remote gdrive
+
+bbackup init-config
+bbackup init-encryption --method asymmetric --algorithm rsa-4096
+```
+
+### `bbman` commands
+
+```bash
+bbman setup                    # First-time setup wizard
+bbman health                   # Docker, tools, config health check
+bbman check-deps               # Check dependencies
+bbman check-deps --install     # Install missing packages
+bbman validate-config          # Parse and validate config file
+bbman status                   # Backup history and totals
+bbman cleanup                  # Clean staging dirs and old logs
+bbman diagnostics              # Generate diagnostic report
+bbman check-updates            # Check for newer version
+bbman update                   # Self-update from repo
+bbman repo-url --url URL       # Set the update source URL
+bbman run backup --containers app  # Run bbackup through the wrapper
+```
+
+---
+
+## TUI keyboard controls
+
+| Key | Action |
+|-----|--------|
+| `Q` | Quit / cancel backup |
+| `P` | Pause / resume |
+| `S` | Skip current item |
+| `H` | Help |
+
+---
+
+## Encryption
+
+Two modes are supported:
+
+**Symmetric (AES-256-GCM):** One key encrypts and decrypts. Good for single-server setups.
+
+```bash
+bbackup init-encryption --method symmetric
+```
+
+**Asymmetric (RSA-4096):** Public key encrypts, private key decrypts. Better for multi-server setups where you want separate backup and restore machines.
+
+```bash
+bbackup init-encryption --method asymmetric --algorithm rsa-4096
+```
+
+The public key can be hosted on GitHub and referenced by shortcut:
+
+```yaml
+encryption:
+  enabled: true
+  method: asymmetric
+  asymmetric:
+    public_key: github:YOUR_USERNAME/gist:YOUR_GIST_ID
+    private_key: ~/.config/bbackup/backup_private.pem
+```
+
+Full details in [docs/encryption.md](docs/encryption.md).
+
+---
+
+## Project structure
+
+```
+best-backup/
+├── bbackup/                # Main Python package
+│   ├── cli.py              # bbackup CLI entry point
+│   ├── config.py           # Config loading and all dataclasses
+│   ├── docker_backup.py    # Docker backup via temp Alpine containers
+│   ├── backup_runner.py    # Backup workflow orchestration
+│   ├── restore.py          # Restore operations
+│   ├── tui.py              # Rich TUI and BackupStatus tracking
+│   ├── remote.py           # Remote storage (local / rclone / SFTP)
+│   ├── rotation.py         # Retention policies and quota cleanup
+│   ├── encryption.py       # AES-256-GCM + RSA encryption
+│   ├── logging.py          # Rotating file logger
+│   ├── bbman_entry.py      # Console script shim for bbman
+│   └── management/         # bbman subpackage (11 modules)
+├── bbackup.py              # bbackup entry point
+├── bbman.py                # bbman entry point
+├── config.yaml.example     # Annotated config template
+├── requirements.txt
+└── setup.py
+```
+
+---
+
+## Documentation
+
+- [QUICKSTART.md](QUICKSTART.md) - Setup to first backup in 5 minutes
+- [INSTALL.md](INSTALL.md) - All installation methods
+- [docs/management.md](docs/management.md) - Full `bbman` reference
+- [docs/encryption.md](docs/encryption.md) - Encryption setup and key management
+
+---
+
+## Roadmap
+
+**Done**
+
+- [x] Rich TUI with real-time transfer metrics
+- [x] Incremental backups with rsync `--link-dest`
+- [x] Backup rotation and retention policies
+- [x] AES-256-GCM and RSA-4096 encryption
+- [x] Full restore with optional rename
+- [x] Management wrapper (`bbman`)
+- [x] GitHub key integration for public key distribution
+
+**Planned**
+
+- [ ] Backup verification and checksums
+- [ ] Email and webhook notifications
+- [ ] Cron-based scheduling integration
+- [ ] Multi-server backup coordination
+- [ ] Backup diff / comparison
+- [ ] Web UI
+
+---
+
+## License
+
+MIT. See [LICENSE](LICENSE).
+
+---
+
+## Credits
+
+- Terminal UI via [Rich](https://github.com/Textualize/rich)
+- CLI framework via [Click](https://github.com/pallets/click)
+- Docker integration via [docker-py](https://github.com/docker/docker-py)

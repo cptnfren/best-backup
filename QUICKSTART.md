@@ -1,60 +1,50 @@
-# bbackup Quick Start Guide
+# Quick start guide
 
-## 5-Minute Setup
+> Get from zero to a completed backup in about 5 minutes.
 
-### Option 1: Using Management Wrapper (Recommended)
+---
+
+## Step 1: Install
 
 ```bash
-# Run setup wizard (does everything automatically)
-python3 bbman.py setup
-
-# Launch application
-python3 bbman.py run backup
+git clone https://github.com/YOUR_USERNAME/best-backup.git
+cd best-backup
+pip install -e .
 ```
 
-The setup wizard will check dependencies, create configuration, and guide you through initial setup.
+This registers both `bbackup` and `bbman` as system commands.
 
-### Option 2: Manual Setup
+---
 
-### Step 1: Install Dependencies
+## Step 2: First-time setup
 
 ```bash
-# Install Python packages
-pip3 install -r requirements.txt
-
-# Ensure rsync is installed
-sudo apt-get install rsync  # Debian/Ubuntu
-# or
-sudo yum install rsync      # RHEL/CentOS
+bbman setup
 ```
 
-### Step 2: Initialize Configuration
+The setup wizard checks Docker access, verifies system dependencies (`rsync`, `tar`), installs any missing Python packages, and creates a starter config at `~/.config/bbackup/config.yaml`.
+
+If you prefer to do this manually:
 
 ```bash
-# Create config file
-./bbackup.py init-config
-
-# Or if installed system-wide:
 bbackup init-config
-
-# Or use management wrapper:
-python3 bbman.py setup
 ```
 
-### Step 3: Edit Configuration
+---
 
-Edit `~/.config/bbackup/config.yaml`:
+## Step 3: Edit your config
+
+Open `~/.config/bbackup/config.yaml` and define which containers you want to back up and where to store the results.
 
 ```yaml
-# Minimal working config
 backup:
   local_staging: /tmp/bbackup_staging
   backup_sets:
-    my_containers:
-      description: "My containers"
+    production:
+      description: "Production stack"
       containers:
-        - container1
-        - container2
+        - myapp
+        - mydb
       scope:
         volumes: true
         configs: true
@@ -66,55 +56,57 @@ remotes:
     path: ~/backups/docker
 ```
 
-### Step 4: Run Your First Backup
+A fully annotated example with all options is in [`config.yaml.example`](config.yaml.example).
 
-```bash
-# Interactive mode (select containers from menu)
-./bbackup.py backup
+---
 
-# Or backup specific containers
-./bbackup.py backup --containers container1 container2
-
-# Or use a backup set
-./bbackup.py backup --backup-set my_containers
-```
-
-## Common Use Cases
-
-### Backup All Containers
+## Step 4: Run your first backup
 
 ```bash
 bbackup backup
-# Select "all" when prompted
 ```
 
-### Backup Only Configurations (No Data)
+You'll get an interactive container picker, then a live dashboard showing transfer speed, bytes moved, and per-container status as the backup runs.
+
+To skip the picker and go straight to a specific set:
+
+```bash
+bbackup backup --backup-set production
+```
+
+Or target individual containers directly:
+
+```bash
+bbackup backup --containers myapp mydb
+```
+
+---
+
+## Common scenarios
+
+### Backup only configs (no volume data)
 
 ```bash
 bbackup backup --config-only
 ```
 
-### Backup Only Volumes (No Configs)
-
-```bash
-bbackup backup --volumes-only
-```
-
-### Incremental Backup
+### Incremental backup (only changed data)
 
 ```bash
 bbackup backup --incremental
 ```
 
-### Backup to Google Drive
+Uses rsync `--link-dest` so unchanged files are hardlinked from the previous backup rather than copied. Works well for large volumes that change slowly.
 
-1. Setup rclone:
+### Send to Google Drive
+
+1. Configure rclone first:
    ```bash
    rclone config
-   # Create remote named "gdrive"
+   # Create a remote named "gdrive"
    ```
 
-2. Edit config:
+2. Add to your config:
    ```yaml
    remotes:
      gdrive:
@@ -124,43 +116,61 @@ bbackup backup --incremental
        path: /backups/docker
    ```
 
-3. Run backup:
+3. Run:
    ```bash
    bbackup backup --remote gdrive
    ```
 
-## Troubleshooting
-
-### "Docker not found" Error
+### Restore from a backup
 
 ```bash
-# Add user to docker group
+bbackup restore --backup-path ~/backups/docker/backup_2026-02-26 --all
+```
+
+Restore specific containers only:
+
+```bash
+bbackup restore --backup-path ~/backups/docker/backup_2026-02-26 --containers myapp
+```
+
+---
+
+## Troubleshooting
+
+**"Permission denied" on Docker socket**
+
+```bash
 sudo usermod -aG docker $USER
-# Log out and back in, or:
 newgrp docker
 ```
 
-### "rclone not found" Error
+**`rsync` not found**
 
-Install rclone:
 ```bash
-# See: https://rclone.org/install/
+sudo apt-get install rsync      # Debian / Ubuntu
+sudo yum install rsync          # RHEL / CentOS
+```
+
+**`rclone` not found**
+
+```bash
 curl https://rclone.org/install.sh | sudo bash
 ```
 
-### Permission Denied
+**Config not found**
 
 ```bash
-# Make script executable
-chmod +x bbackup.py
-
-# Or run with Python
-python3 bbackup.py backup
+bbackup init-config
+# or
+bbman setup
 ```
 
-## Next Steps
+---
 
-- Read the full [README.md](README.md) for advanced features
-- Configure backup sets for different container groups
-- Set up retention policies
-- Configure multiple remote destinations
+## Next steps
+
+- [README.md](README.md) - Full CLI reference and feature list
+- [INSTALL.md](INSTALL.md) - Alternative installation methods
+- [docs/management.md](docs/management.md) - Full `bbman` reference
+- [docs/encryption.md](docs/encryption.md) - Encryption setup
+- [`config.yaml.example`](config.yaml.example) - All configuration options
