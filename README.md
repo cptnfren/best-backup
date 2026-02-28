@@ -254,7 +254,7 @@ Level-0 output:
 ```json
 {
   "cli": "bbackup",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "agent_hint": "Set BBACKUP_OUTPUT=json and BBACKUP_NO_INTERACTIVE=1 ...",
   "skills": [
     {"id": "docker-backup",     "summary": "...", "common": true},
