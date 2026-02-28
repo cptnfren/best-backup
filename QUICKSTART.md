@@ -30,6 +30,12 @@ If you prefer to do this manually:
 bbackup init-config
 ```
 
+For agent or CI use, skip the wizard:
+
+```bash
+bbman setup --no-interactive --output json
+```
+
 ---
 
 ## Step 3: Edit your config
@@ -198,6 +204,29 @@ bbackup init-config
 # or
 bbman setup
 ```
+
+---
+
+## Using with AI agents
+
+Every command supports `--output json` for structured output and `--input-json '{...}'` for parameter passing. Set two env vars once and all subprocesses inherit them:
+
+```bash
+export BBACKUP_OUTPUT=json
+export BBACKUP_NO_INTERACTIVE=1
+
+# Discover capabilities
+bbackup skills
+bbman skills
+
+# Run a non-interactive backup with JSON result
+bbackup backup --containers myapp --no-interactive --output json
+
+# Or via flat JSON input
+bbackup backup --input-json '{"containers":["myapp"],"incremental":true,"no_interactive":true}' --output json
+```
+
+See [README.md](README.md#agent-integration) for the full agent integration reference including the envelope spec, exit codes, and skills protocol.
 
 ---
 

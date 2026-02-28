@@ -8,6 +8,8 @@
 
 `bbman` is a separate entry point from `bbackup`. Where `bbackup` runs backups and restores, `bbman` handles everything around the application: first-time setup, dependency checks, update management, diagnostics, and cleanup. You can use it as a pre-flight wrapper for `bbackup` runs or independently for maintenance.
 
+Every `bbman` command supports `--output json` for machine-readable output and `--input-json '{...}'` for single-object parameter passing. Set `BBACKUP_OUTPUT=json` to apply JSON mode globally to all subprocesses.
+
 ---
 
 ## Command reference
@@ -18,9 +20,13 @@ Interactive first-time setup wizard. Run this before anything else.
 
 ```bash
 bbman setup
+bbman setup --no-interactive    # Skip wizard; return config state (agent mode)
+bbman setup --output json       # JSON output
 ```
 
 Checks Docker access, verifies `rsync` and `tar` are installed, installs any missing Python packages, and creates `~/.config/bbackup/config.yaml` if it does not exist. Optionally walks you through encryption key generation.
+
+With `--no-interactive` (or `BBACKUP_NO_INTERACTIVE=1`), the wizard is skipped and the current config state is returned as JSON.
 
 ---
 
@@ -30,6 +36,7 @@ Comprehensive health check.
 
 ```bash
 bbman health
+bbman health --output json    # Machine-readable result
 ```
 
 Checks:
@@ -38,6 +45,8 @@ Checks:
 - Python dependencies match `requirements.txt`
 - Config file parses without errors
 - Staging and log directories are writable
+
+JSON output uses named fields (`{"ok": true, "message": "..."}`) rather than positional tuples, making it straightforward for agents to check individual components.
 
 ---
 
@@ -49,6 +58,7 @@ Check (and optionally install) missing dependencies.
 bbman check-deps              # Report only
 bbman check-deps --install    # Install missing packages
 bbman check-deps -i           # Shorthand
+bbman check-deps --output json
 ```
 
 ---
@@ -59,6 +69,7 @@ Parse and validate the config file.
 
 ```bash
 bbman validate-config
+bbman validate-config --output json
 ```
 
 Reports YAML syntax errors, missing required fields, invalid paths, and unrecognized remote types. Shows a summary of what was parsed successfully.
@@ -71,9 +82,10 @@ Show backup history.
 
 ```bash
 bbman status
+bbman status --output json
 ```
 
-Prints total backup count, combined size, how many are encrypted, and the most recent backup timestamps.
+Prints total backup count, combined size, how many are encrypted, and the most recent backup timestamps. In JSON mode, raw statistics are returned directly rather than a formatted display.
 
 ---
 
@@ -88,7 +100,10 @@ bbman cleanup --log-days 30       # Keep log files newer than N days
 bbman cleanup --yes               # Skip confirmation prompt
 bbman cleanup --no-backups        # Do not touch old backup directories
 bbman cleanup --no-temp           # Skip temporary file cleanup
+bbman cleanup --yes --output json # Agent-friendly: skip prompt + JSON result
 ```
+
+In JSON mode, confirmation is automatically skipped (equivalent to `--yes`).
 
 ---
 
@@ -98,10 +113,13 @@ Generate a diagnostic report.
 
 ```bash
 bbman diagnostics
-bbman diagnostics --output report.txt
+bbman diagnostics --report-file report.txt    # Save to file
+bbman diagnostics --output json               # JSON output
 ```
 
 Includes system info, Docker version, Python environment, config summary, and recent errors from the log file. Useful for bug reports.
+
+Note: the save-to-file option is `--report-file` (not `--output`, which is reserved for the output format selector).
 
 ---
 
@@ -112,6 +130,7 @@ Check whether the installed version is behind the configured repository.
 ```bash
 bbman check-updates
 bbman check-updates --branch main
+bbman check-updates --output json
 ```
 
 Uses SHA-256 checksums (Git-compatible) to compare local files against the remote tree. Reports which files have changed without downloading anything.
@@ -127,9 +146,10 @@ bbman update
 bbman update --method git       # Use git pull
 bbman update --method download  # Download changed files directly
 bbman update --yes              # Skip confirmation
+bbman update --yes --output json
 ```
 
-Creates a backup of the current installation before applying changes. Verifies checksums after updating.
+Creates a backup of the current installation before applying changes. Verifies checksums after updating. In JSON mode, confirmation is automatically skipped.
 
 ---
 
@@ -140,6 +160,7 @@ Manage the repository URL used for update checks and downloads.
 ```bash
 bbman repo-url                              # Show current URL and its source
 bbman repo-url --url https://github.com/YOUR_USERNAME/best-backup
+bbman repo-url --output json
 ```
 
 The URL is resolved in this order:
@@ -158,9 +179,60 @@ Launch `bbackup` through the wrapper.
 bbman run backup --containers myapp
 bbman run list-containers
 bbman run restore --backup-path /path/to/backup --all
+bbman run backup --containers myapp --output json   # JSON envelope wraps bbackup output
 ```
 
-Arguments pass through directly to `bbackup`. Use this if you want optional pre-flight health checks to run automatically before each backup.
+Arguments pass through directly to `bbackup`. With `--output json`, the subprocess output is captured and wrapped in the standard JSON envelope.
+
+---
+
+### `bbman skills`
+
+Discover what `bbman` can do. Useful for AI agents performing progressive capability discovery.
+
+```bash
+bbman skills                     # Level-0: list all skill ids and summaries
+bbman skills setup               # Level-1: step-by-step guide + JSON schemas
+bbman skills maintenance
+bbman skills updates
+bbman skills dependencies
+```
+
+Level-0 output includes an `agent_hint` field pointing agents to the recommended env vars and `--input-json` usage.
+
+---
+
+## Agent integration
+
+`bbman` is natively compatible with AI agents:
+
+```bash
+# Set globally once
+export BBACKUP_OUTPUT=json
+export BBACKUP_NO_INTERACTIVE=1
+
+# Discover capabilities
+bbman skills
+
+# Run with structured input/output
+bbman health --output json
+bbman cleanup --input-json '{"staging_days": 14, "yes": true}' --output json
+bbman check-updates --output json
+```
+
+Every command returns the standard JSON envelope:
+
+```json
+{
+  "schema_version": "1",
+  "command": "health",
+  "success": true,
+  "data": { "docker": {"ok": true, "message": "..."}, "overall": "healthy" },
+  "errors": []
+}
+```
+
+See [README.md](../README.md#agent-integration) for exit code reference and the full envelope specification.
 
 ---
 
@@ -200,7 +272,7 @@ bbman validate-config
 
 ```bash
 bbman health
-bbman run backup --backup-set production
+bbman run backup --backup-set production --no-interactive
 ```
 
 ### Maintenance
@@ -208,7 +280,7 @@ bbman run backup --backup-set production
 ```bash
 bbman status
 bbman cleanup --yes
-bbman diagnostics --output diagnostics.txt
+bbman diagnostics --report-file diagnostics.txt
 ```
 
 ### Update cycle
@@ -217,6 +289,17 @@ bbman diagnostics --output diagnostics.txt
 bbman check-updates
 bbman update --yes
 bbman health
+```
+
+### Agent-driven workflow
+
+```bash
+export BBACKUP_OUTPUT=json BBACKUP_NO_INTERACTIVE=1
+bbman skills                          # discover capabilities
+bbman health --output json            # preflight check
+bbman run backup --containers myapp --no-interactive --output json
+bbman status --output json
+bbman cleanup --yes --output json
 ```
 
 ---
@@ -230,9 +313,9 @@ Run it directly: `bbman setup`
 **Update fails**
 
 ```bash
-bbman repo-url                          # Confirm URL is correct
-bbman diagnostics --output report.txt   # Check for errors
-cat ~/.local/share/bbackup/bbackup.log  # Review recent log entries
+bbman repo-url                               # Confirm URL is correct
+bbman diagnostics --report-file report.txt  # Check for errors
+cat ~/.local/share/bbackup/bbackup.log      # Review recent log entries
 ```
 
 **Health check failures**

@@ -8,6 +8,50 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
+## [1.3.3] - 2026-02-27
+
+### Added
+
+- AI-agent-friendly JSON I/O layer across all `bbackup` and `bbman` commands
+- `--output [text|json]` on every command: emits a versioned JSON envelope to stdout; all diagnostic text goes to stderr
+- `--input-json JSON` on every command: accepts all parameters as a single flat JSON object; merges over CLI flags; unknown keys silently ignored (forward-compatible)
+- `--dry-run` on `bbackup backup` and `bbackup restore`: resolves targets and returns a plan without executing
+- `bbackup skills` and `bbman skills` subcommands for progressive AI agent capability discovery; each skill includes step-by-step guidance and per-step `input_json_schema`
+- `BBACKUP_OUTPUT=json` env var: sets JSON mode globally for all subprocesses without passing `--output json` to each command
+- `BBACKUP_NO_INTERACTIVE=1` env var: suppresses TUI, prompts, and pagers system-wide
+- `--no-interactive` flag on `bbman setup`: skip wizard and return config state as JSON (agent mode)
+- `bbackup/cli_utils.py`: shared foundation module with decorators, envelope builder, `merge_json_input`, `json_error`, `flatten_health_tuples`, and semantic exit constants (0-5)
+- `bbackup/skills.py`: static skill descriptors for 6 `bbackup` skills and 4 `bbman` skills with per-step `input_json_schema` (JSON Schema)
+- 30 new tests in `tests/test_cli.py` across 6 classes: `TestJSONOutputMode`, `TestInputJSON`, `TestSkillsCommand`, `TestDryRun`, `TestEnvVars`, `TestExitCodes`
+- Agent integration section in `README.md` with quickstart, envelope spec, env var table, exit code table, skills protocol, and dry-run example
+
+### Changed
+
+- `bbman diagnostics --output` (file path) renamed to `bbman diagnostics --report-file` to free `--output` for the universal format selector
+- `bbman --version` now reports the actual package version from `bbackup.__version__` instead of the hardcoded `"1.0.0"`
+- All `sys.exit(1)` calls replaced with semantic exit constants: `EXIT_USER_ERROR=1`, `EXIT_CONFIG_ERROR=2`, `EXIT_SYSTEM_ERROR=3`, `EXIT_PARTIAL=4`, `EXIT_CANCELLED=5`
+- `bbman health` and `bbman check-deps` JSON output uses named sub-dicts (`{"ok": bool, "message": "..."}`) instead of positional tuples
+- `bbackup list-containers` JSON output now includes the `"id"` field for each container
+- `bbackup list-backup-sets` JSON output now includes the full `"scope"` dict per set
+- Error output from pre-run validation (unknown backup set, missing path, etc.) routed to stderr in text mode and to the `errors` array in JSON mode; stdout is reserved for the JSON envelope only
+
+### Fixed
+
+- TUI no longer blocks agents: `--output json` or `BBACKUP_NO_INTERACTIVE=1` automatically bypasses `run_with_live_dashboard()`
+- `backup` command now captures and uses the return value from `runner.run_backup()` for the JSON result payload
+- `bbman status` in JSON mode returns structured data directly instead of returning `None`
+- `bbman cleanup` JSON output uses `.get("kept", 0)` to guarantee a stable shape regardless of cleanup module version
+
+---
+
+## [1.3.2] - 2026-02-27
+
+### Changed
+
+- Documentation updates aligned with v1.3.0 and v1.3.1: README, INSTALL, QUICKSTART, docs/architecture.md, docs/management.md, docs/encryption.md updated to reflect filesystem backup, restore options, CLI changes, and project structure
+
+---
+
 ## [1.3.1] - 2026-02-27
 
 ### Added
@@ -98,7 +142,9 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
-[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.3.1...HEAD
+[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.3.3...HEAD
+[1.3.3]: https://github.com/cptnfren/best-backup/compare/v1.3.2...v1.3.3
+[1.3.2]: https://github.com/cptnfren/best-backup/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/cptnfren/best-backup/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/cptnfren/best-backup/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/cptnfren/best-backup/compare/v1.2.0...v1.2.1
