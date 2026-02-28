@@ -8,6 +8,15 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
+## [1.4.0] - 2026-02-28
+
+### Changed
+
+- README overhauled: centered hero header, GitHub Alerts (`[!TIP]`), icon column in feature table, collapsible CLI sections via `<details>`, docs table, and install one-liner at top of page
+- Version badge in README updated to reflect current release
+
+---
+
 ## [1.3.3] - 2026-02-27
 
 ### Added
@@ -143,6 +152,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 ---
 
 [Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.3.3...HEAD
+[1.4.0]: https://github.com/cptnfren/best-backup/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/cptnfren/best-backup/compare/v1.3.2...v1.3.3
 [1.3.2]: https://github.com/cptnfren/best-backup/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/cptnfren/best-backup/compare/v1.3.0...v1.3.1
