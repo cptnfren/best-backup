@@ -3,26 +3,34 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-A Docker backup tool with a full-screen terminal UI. It handles containers, volumes, networks, and configurations in one shot, with incremental backups, encryption at rest, and automatic rotation to local or remote storage.
+Back up Docker containers and host filesystems from one tool. bbackup handles containers, volumes, networks, arbitrary directory trees, encryption, remote upload, and rotation in a single command, with a live terminal UI or structured JSON output for AI agent control.
+
+```bash
+pip install git+https://github.com/cptnfren/best-backup.git
+```
 
 ---
 
 ## What it does
 
-Run `bbackup backup` and you get an interactive container picker, a live BTOP-style dashboard while the backup runs, and a finished archive that can be encrypted and shipped to Google Drive, SFTP, or a local path. The companion `bbman` command handles setup, health checks, dependency installs, and self-updates so day-to-day maintenance stays out of the way.
+Run `bbackup backup` and you get an interactive container picker and a live BTOP-style dashboard while the backup runs. Point it at `/srv/data` and it backs that up too, with gitignore-style excludes. The finished archive can be encrypted and shipped to Google Drive, SFTP, or a local path. The companion `bbman` command handles setup, health checks, dependency installs, and self-updates so day-to-day maintenance stays out of the way.
+
+Every command also speaks structured JSON, which makes it compatible with AI agents out of the box: pass `--output json`, discover capabilities with `bbackup skills`, and feed parameters as a flat JSON object with `--input-json`.
 
 ## Features
 
 | | |
 |---|---|
 | ✅ Rich TUI | BTOP-style live dashboard with real-time transfer metrics |
+| ✅ Docker backup | Containers, volumes, networks, and configs in one shot |
+| ✅ Filesystem backup | Back up any host path recursively with gitignore-style excludes |
 | ✅ Incremental backups | rsync `--link-dest` so unchanged data is hardlinked, not copied |
 | ✅ Encryption | AES-256-GCM (symmetric) or RSA-4096 (asymmetric) at rest |
 | ✅ Remote storage | Google Drive via rclone, SFTP, or local directory |
 | ✅ Rotation | Time-based daily/weekly/monthly retention with quota enforcement |
 | ✅ Full restore | Containers, volumes, networks, and filesystem paths with optional rename |
 | ✅ Backup sets | Named groups of containers defined in config for repeatable runs |
-| ✅ Filesystem backup | Back up any host path recursively with gitignore-style exclude patterns |
+| ✅ Agent-friendly CLI | JSON I/O, `--input-json`, `--dry-run`, skill discovery on every command |
 | ✅ Management CLI | `bbman` for setup, health, updates, cleanup, and diagnostics |
 
 ---
@@ -31,23 +39,28 @@ Run `bbackup backup` and you get an interactive container picker, a live BTOP-st
 
 - Python 3.10+
 - Docker (with socket access for your user)
-- `rsync` (system package, for volume backups)
+- `rsync` (system package, for volume and filesystem backups)
 - `rclone` (optional, for Google Drive)
 
 ---
 
 ## Installation
 
-```bash
-# Clone the repo
-git clone https://github.com/YOUR_USERNAME/best-backup.git
-cd best-backup
+One-liner from GitHub:
 
-# Install Python dependencies and register system commands
+```bash
+pip install git+https://github.com/cptnfren/best-backup.git
+```
+
+Or clone and install in editable mode for development:
+
+```bash
+git clone https://github.com/cptnfren/best-backup.git
+cd best-backup
 pip install -e .
 ```
 
-Both `bbackup` and `bbman` will be available system-wide after this.
+Both `bbackup` and `bbman` are registered as system commands after either install.
 
 For other installation methods (symlinks, PATH-only, user install), see [INSTALL.md](INSTALL.md).
 
@@ -62,8 +75,14 @@ bbman setup
 # Run an interactive backup
 bbackup backup
 
-# Or target specific containers
+# Target specific containers
 bbackup backup --containers myapp mydb
+
+# Back up a host filesystem path
+bbackup backup --paths /srv/data
+
+# Non-interactive (agent / cron mode)
+BBACKUP_OUTPUT=json BBACKUP_NO_INTERACTIVE=1 bbackup backup --backup-set production
 ```
 
 See [QUICKSTART.md](QUICKSTART.md) for a complete walk-through including config, remote storage, and encryption setup.
@@ -403,6 +422,7 @@ best-backup/
 - [x] Filesystem backup for arbitrary host paths and directory trees
 - [x] Management wrapper (`bbman`)
 - [x] GitHub key integration for public key distribution
+- [x] AI agent-friendly JSON I/O, skill discovery, and `--dry-run` on all commands
 
 **Planned**
 
