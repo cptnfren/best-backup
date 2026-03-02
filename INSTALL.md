@@ -4,9 +4,9 @@
 
 ---
 
-## Recommended: pipx
+## Recommended: pipx, single user
 
-`pipx` installs bbackup into an isolated virtual environment it manages itself and puts `bbackup` and `bbman` on your PATH. You never have to activate anything.
+`pipx` installs bbackup into an isolated virtual environment and wires `bbackup` and `bbman` into your PATH. You never have to activate anything.
 
 ```bash
 # Install pipx (Ubuntu/Debian)
@@ -37,6 +37,39 @@ pipx upgrade bbackup
 ```bash
 pipx uninstall bbackup
 ```
+
+---
+
+## Server install: pipx, system-wide (all users)
+
+The single-user method above installs only for the user who ran it. On a shared server, or when cron jobs run as root or another user, use the system-wide approach instead. It places `bbackup` and `bbman` in `/usr/local/bin`, which is on every user's PATH by default.
+
+```bash
+sudo apt install pipx
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/cptnfren/best-backup.git
+```
+
+```bash
+# Verify as any user
+bbackup --version
+bbman --version
+```
+
+**Updating:**
+
+```bash
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx upgrade bbackup
+```
+
+**Uninstalling:**
+
+```bash
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx uninstall bbackup
+```
+
+Note: `pipx ensurepath` is not needed for the system-wide method since `/usr/local/bin` is already on every user's PATH.
+
+Each user still has their own config at `~/.config/bbackup/config.yaml` and their own log at `~/.local/share/bbackup/bbackup.log`. Only the binary is shared.
 
 ---
 
@@ -110,10 +143,16 @@ Add that export line to your shell profile to make it permanent.
 
 ## Uninstall
 
-If installed via pipx:
+If installed via pipx (single user):
 
 ```bash
 pipx uninstall bbackup
+```
+
+If installed via pipx (system-wide):
+
+```bash
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx uninstall bbackup
 ```
 
 If installed into a manual venv:

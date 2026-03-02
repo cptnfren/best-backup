@@ -6,7 +6,9 @@
 
 ## Step 1: Install
 
-The simplest method on any modern Linux server. `pipx` handles the virtual environment automatically and wires `bbackup` and `bbman` into your PATH:
+`pipx` handles the virtual environment automatically and wires `bbackup` and `bbman` into your PATH.
+
+**Single user** (commands available only to you):
 
 ```bash
 sudo apt install pipx
@@ -19,7 +21,14 @@ Open a new shell, then:
 pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-That's it. Both commands are ready system-wide. See [INSTALL.md](INSTALL.md) for alternative methods (manual venv, editable development install, symlinks).
+**Server / all users** (commands available to every user and cron jobs):
+
+```bash
+sudo apt install pipx
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/cptnfren/best-backup.git
+```
+
+See [INSTALL.md](INSTALL.md) for update, uninstall, and alternative install methods.
 
 ---
 

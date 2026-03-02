@@ -59,22 +59,25 @@ Every command speaks structured JSON, making it compatible with AI agents out of
 
 ## Installation
 
-**Recommended: pipx (one command, no manual venv)**
+`pipx` handles the virtual environment automatically. Pick the method that fits your setup:
 
-`pipx` installs bbackup into an isolated environment and wires `bbackup` and `bbman` into your PATH automatically. It is the simplest approach on any modern Linux server.
+**Single user:**
 
 ```bash
-# Install pipx if you don't have it (Ubuntu/Debian)
-sudo apt install pipx
-pipx ensurepath   # adds ~/.local/bin to PATH (one-time)
-
-# Install bbackup
+sudo apt install pipx && pipx ensurepath
 pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-Open a new shell (or `source ~/.bashrc`) and both commands are ready.
+Open a new shell and both commands are ready.
 
-For clone-based development installs, manual venv setup, or other methods, see [INSTALL.md](INSTALL.md).
+**Server / all users** (installs to `/usr/local/bin`, available to every user and cron jobs):
+
+```bash
+sudo apt install pipx
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/cptnfren/best-backup.git
+```
+
+For development installs, manual venv setup, updates, and uninstall instructions, see [INSTALL.md](INSTALL.md).
 
 ---
 
