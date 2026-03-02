@@ -4,52 +4,65 @@
 
 ---
 
-## Recommended: virtual environment install
+## Recommended: pipx
 
-Ubuntu 22.04+ and Debian 12+ enforce PEP 668, which blocks `pip install` on the system Python to protect OS-managed packages. A virtual environment sidesteps this cleanly and is the safest approach on any modern Linux server.
+`pipx` installs bbackup into an isolated virtual environment it manages itself and puts `bbackup` and `bbman` on your PATH. You never have to activate anything.
+
+```bash
+# Install pipx (Ubuntu/Debian)
+sudo apt install pipx
+pipx ensurepath   # adds ~/.local/bin to PATH — one-time setup
+```
+
+Open a new shell (or run `source ~/.bashrc`), then:
+
+```bash
+pipx install git+https://github.com/cptnfren/best-backup.git
+```
+
+```bash
+# Verify
+bbackup --version
+bbman --version
+```
+
+**Updating later:**
+
+```bash
+pipx upgrade bbackup
+```
+
+**Uninstalling:**
+
+```bash
+pipx uninstall bbackup
+```
+
+---
+
+## Manual virtual environment install (development / editable mode)
+
+Use this if you want to edit the source code and have changes take effect immediately without reinstalling.
 
 ```bash
 git clone https://github.com/cptnfren/best-backup.git
 cd best-backup
 
-# Create and activate the venv (one-time)
 python3 -m venv .venv
 source .venv/bin/activate
-
-# Install in editable mode (source changes take effect immediately)
 pip install -e .
 ```
 
-After activation, both `bbackup` and `bbman` are available for the lifetime of that shell session.
-
-To make the commands available in every new shell without manually activating the venv, add wrapper entries to your PATH:
+To make the commands available in every new shell without activating the venv each time:
 
 ```bash
-# Add to ~/.bashrc or ~/.zshrc
-export PATH="$HOME/best-backup/.venv/bin:$PATH"
-```
-
-```bash
-# Verify
-which bbackup
-which bbman
-bbackup --version
-bbman --version
-```
-
-If you prefer the venv to live outside the repo (e.g. under `~/.venvs/`):
-
-```bash
-python3 -m venv ~/.venvs/bbackup
-source ~/.venvs/bbackup/bin/activate
-pip install -e /path/to/best-backup
+echo 'export PATH="$HOME/best-backup/.venv/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
 ```
 
 ---
 
-## Production install (stable, no source edits needed)
-
-Same venv pattern, without editable mode:
+## Production install (stable, from local clone, no editable mode)
 
 ```bash
 python3 -m venv ~/.venvs/bbackup
@@ -97,16 +110,18 @@ Add that export line to your shell profile to make it permanent.
 
 ## Uninstall
 
-If installed into a venv, activate it first then uninstall:
+If installed via pipx:
+
+```bash
+pipx uninstall bbackup
+```
+
+If installed into a manual venv:
 
 ```bash
 source .venv/bin/activate
 pip uninstall bbackup
-```
-
-To remove the entire venv:
-
-```bash
+# or remove the whole venv:
 rm -rf .venv
 ```
 
@@ -168,7 +183,14 @@ pip install -e .
 
 **`error: externally-managed-environment` on Ubuntu 22.04+ / Debian 12+**
 
-These distros block `pip install` on the system Python (PEP 668). Use a virtual environment as shown in the recommended install section above. Do not pass `--break-system-packages`; that flag bypasses OS safeguards and can corrupt system tools that depend on Python.
+These distros block `pip install` on the system Python (PEP 668). The fix is `pipx`, which handles isolation automatically:
+
+```bash
+sudo apt install pipx && pipx ensurepath
+pipx install git+https://github.com/cptnfren/best-backup.git
+```
+
+Do not pass `--break-system-packages`; that flag bypasses OS safeguards and can corrupt tools that depend on the system Python.
 
 **Packages fail to install**
 

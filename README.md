@@ -15,14 +15,10 @@
 ---
 
 ```bash
-git clone https://github.com/cptnfren/best-backup.git
-cd best-backup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-See [Installation](#installation) for PATH setup and alternative methods.
+`pipx` handles the virtual environment automatically. See [Installation](#installation) if you need to install `pipx` first, or for alternative methods.
 
 ---
 
@@ -63,24 +59,22 @@ Every command speaks structured JSON, making it compatible with AI agents out of
 
 ## Installation
 
-Ubuntu 22.04+, Debian 12+, and other modern Linux distros block bare `pip install` on the system Python (PEP 668). Use a virtual environment:
+**Recommended: pipx (one command, no manual venv)**
+
+`pipx` installs bbackup into an isolated environment and wires `bbackup` and `bbman` into your PATH automatically. It is the simplest approach on any modern Linux server.
 
 ```bash
-git clone https://github.com/cptnfren/best-backup.git
-cd best-backup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+# Install pipx if you don't have it (Ubuntu/Debian)
+sudo apt install pipx
+pipx ensurepath   # adds ~/.local/bin to PATH (one-time)
+
+# Install bbackup
+pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-To make `bbackup` and `bbman` available in every new shell without re-activating the venv:
+Open a new shell (or `source ~/.bashrc`) and both commands are ready.
 
-```bash
-echo 'export PATH="$HOME/best-backup/.venv/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-For alternative methods (symlinks, PATH-only, older distros without PEP 668), see [INSTALL.md](INSTALL.md).
+For clone-based development installs, manual venv setup, or other methods, see [INSTALL.md](INSTALL.md).
 
 ---
 

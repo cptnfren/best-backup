@@ -6,24 +6,20 @@
 
 ## Step 1: Install
 
-Ubuntu 22.04+, Debian 12+, and other modern distros block `pip install` on the system Python (PEP 668). Use a virtual environment to avoid that error entirely:
+The simplest method on any modern Linux server. `pipx` handles the virtual environment automatically and wires `bbackup` and `bbman` into your PATH:
 
 ```bash
-git clone https://github.com/cptnfren/best-backup.git
-cd best-backup
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+sudo apt install pipx
+pipx ensurepath
 ```
 
-This registers both `bbackup` and `bbman` inside the venv. To use them in every new shell without re-activating, add the venv bin directory to your PATH:
+Open a new shell, then:
 
 ```bash
-echo 'export PATH="$HOME/best-backup/.venv/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
+pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-See [INSTALL.md](INSTALL.md) for alternative install methods.
+That's it. Both commands are ready system-wide. See [INSTALL.md](INSTALL.md) for alternative methods (manual venv, editable development install, symlinks).
 
 ---
 
