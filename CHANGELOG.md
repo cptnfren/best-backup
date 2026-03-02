@@ -6,6 +6,18 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- `is_venv()` helper in `bbackup/management/dependencies.py`: detects whether the current Python is running inside a virtual environment by checking `sys.real_prefix` and `sys.base_prefix`
+- PEP 668 guard in `install_python_packages()`: on Ubuntu 22.04+ and Debian 12+ (externally-managed system Python), the function now prints a clear activation message and returns `False` instead of letting pip fail with an unhelpful error
+
+### Changed
+
+- `bbackup/management/setup_wizard.py`: the "Install missing packages?" branch now delegates to `install_python_packages()` from `dependencies.py` instead of calling `subprocess.run(pip install ...)` directly, consolidating the venv check and error handling in one place
+- `INSTALL.md`: virtual environment install is now the recommended method; added dedicated PEP 668 troubleshooting section; updated all "user install" and "packages fail" tips to reflect venv-first workflow
+- `QUICKSTART.md` Step 1: installation example updated to create and activate a venv before `pip install -e .`
+- `README.md` installation section: updated to show venv-based install and PATH configuration; removed bare `pip install git+...` one-liner
+
 ---
 
 ## [1.4.0] - 2026-02-28

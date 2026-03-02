@@ -61,6 +61,13 @@ bbman check-deps -i           # Shorthand
 bbman check-deps --output json
 ```
 
+On Ubuntu 22.04+ and Debian 12+ the system Python is externally managed (PEP 668). If you are not running inside a virtual environment, `--install` will print a warning and skip the install rather than failing with a pip error. Activate the bbackup venv first:
+
+```bash
+source ~/best-backup/.venv/bin/activate
+bbman check-deps --install
+```
+
 ---
 
 ### `bbman validate-config`
@@ -323,7 +330,7 @@ cat ~/.local/share/bbackup/bbackup.log      # Review recent log entries
 | Symptom | Fix |
 |---|---|
 | Docker not accessible | `sudo usermod -aG docker $USER && newgrp docker` |
-| Missing Python packages | `bbman check-deps --install` |
+| Missing Python packages | Activate the venv first, then `bbman check-deps --install` |
 | Config parse error | `bbman validate-config` for details |
 | rsync not found | `sudo apt-get install rsync` |
 

@@ -150,10 +150,10 @@ Public keys can be referenced by path, URL, or GitHub shortcut (`github:USER/gis
 | Module | Responsibility |
 |---|---|
 | `first_run.py` | Detect first run, locate config path |
-| `setup_wizard.py` | Interactive first-time setup |
+| `setup_wizard.py` | Interactive first-time setup; delegates package installs to `dependencies.py` |
 | `health.py` | Docker, system tool, config health checks |
 | `diagnostics.py` | Generate diagnostic report |
-| `dependencies.py` | Check and install missing packages |
+| `dependencies.py` | Check and install missing packages; `is_venv()` guard prevents pip from running on an externally-managed system Python (PEP 668) |
 | `updater.py` | Self-update from remote repo |
 | `version.py` | Version detection, Git-compatible checksums |
 | `repo.py` | Manage update source URL |

@@ -113,16 +113,40 @@ def check_requirements_file() -> List[str]:
     return packages
 
 
+def is_venv() -> bool:
+    """Return True if running inside a virtual environment."""
+    return (
+        hasattr(sys, "real_prefix")
+        or (hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix)
+    )
+
+
 def install_python_packages(packages: List[str]) -> bool:
     """
-    Install Python packages.
-    
+    Install Python packages using pip.
+
+    On Ubuntu 22.04+ / Debian 12+ the system Python is externally managed
+    (PEP 668) and bare pip installs are blocked. If we are not inside a venv
+    we surface a clear message rather than letting pip fail with a confusing
+    error.
+
     Args:
         packages: List of package names to install
-    
+
     Returns:
         True if successful
     """
+    if not is_venv():
+        console.print(
+            "[yellow]⚠ pip install skipped: the current Python is not inside a "
+            "virtual environment.[/yellow]\n"
+            "[dim]On Ubuntu 22.04+ / Debian 12+ the system Python is externally "
+            "managed (PEP 668).\n"
+            "Activate the bbackup venv first:\n"
+            "  source .venv/bin/activate\n"
+            "then re-run this command.[/dim]"
+        )
+        return False
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install"] + packages,

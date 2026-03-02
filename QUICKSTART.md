@@ -6,13 +6,24 @@
 
 ## Step 1: Install
 
+Ubuntu 22.04+, Debian 12+, and other modern distros block `pip install` on the system Python (PEP 668). Use a virtual environment to avoid that error entirely:
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/best-backup.git
+git clone https://github.com/cptnfren/best-backup.git
 cd best-backup
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
-This registers both `bbackup` and `bbman` as system commands.
+This registers both `bbackup` and `bbman` inside the venv. To use them in every new shell without re-activating, add the venv bin directory to your PATH:
+
+```bash
+echo 'export PATH="$HOME/best-backup/.venv/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+See [INSTALL.md](INSTALL.md) for alternative install methods.
 
 ---
 

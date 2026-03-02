@@ -6,9 +6,15 @@ Thanks for taking the time to contribute. This document covers how to set up a d
 
 ## Development setup
 
+Ubuntu 22.04+, Debian 12+, and other modern distros block bare `pip install` on the system Python (PEP 668). Use a virtual environment:
+
 ```bash
 git clone https://github.com/cptnfren/best-backup.git
 cd best-backup
+
+# Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
 # Install in editable mode with all dependencies
 pip install -e .

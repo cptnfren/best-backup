@@ -15,7 +15,7 @@
 ---
 
 ```bash
-pip install git+https://github.com/cptnfren/best-backup.git
+git clone https://github.com/cptnfren/best-backup.git && cd best-backup && python3 -m venv .venv && source .venv/bin/activate && pip install -e .
 ```
 
 > GitHub automatically adds a **copy button** to every code block above. One click, zero friction.
@@ -59,21 +59,24 @@ Every command speaks structured JSON, making it compatible with AI agents out of
 
 ## Installation
 
-**From GitHub (recommended):**
-
-```bash
-pip install git+https://github.com/cptnfren/best-backup.git
-```
-
-**Clone and install in editable mode (development):**
+Ubuntu 22.04+, Debian 12+, and other modern Linux distros block bare `pip install` on the system Python (PEP 668). Use a virtual environment:
 
 ```bash
 git clone https://github.com/cptnfren/best-backup.git
 cd best-backup
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e .
 ```
 
-Both `bbackup` and `bbman` are registered as system commands after either install. For symlink, PATH-only, or user-install methods, see [INSTALL.md](INSTALL.md).
+To make `bbackup` and `bbman` available in every new shell without re-activating the venv:
+
+```bash
+echo 'export PATH="$HOME/best-backup/.venv/bin:$PATH"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+For alternative methods (symlinks, PATH-only, older distros without PEP 668), see [INSTALL.md](INSTALL.md).
 
 ---
 
@@ -431,6 +434,8 @@ best-backup/
 | [docs/management.md](docs/management.md) | Full `bbman` reference |
 | [docs/encryption.md](docs/encryption.md) | Encryption setup and key management |
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
+| [CONTRIBUTING.md](.github/CONTRIBUTING.md) | How to contribute |
+| [SECURITY.md](SECURITY.md) | How to report vulnerabilities |
 
 ---
 

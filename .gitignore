@@ -62,6 +62,12 @@ backup_*/
 /tmp/
 *.tmp
 
+# Local tooling artifacts (not for publication)
+doc_update_brief.json
+.doc_update_complete
+MagicMock/
+bbackup.egg-info/
+
 # Secrets and keys (never commit these)
 .env
 *.pem

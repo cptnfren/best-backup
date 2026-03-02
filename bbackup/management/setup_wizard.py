@@ -119,15 +119,12 @@ def run_setup_wizard() -> bool:
     else:
         console.print(f"[yellow]⚠ Missing packages: {', '.join(missing)}[/yellow]")
         if Confirm.ask("Install missing packages?", default=True):
-            try:
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install"] + missing,
-                    check=True
-                )
+            from .dependencies import install_python_packages
+            if install_python_packages(missing):
                 console.print("[green]✓ Packages installed[/green]")
                 packages_ok = True
-            except Exception as e:
-                console.print(f"[red]✗ Failed to install packages: {e}[/red]")
+            else:
+                console.print("[red]✗ Failed to install packages[/red]")
                 if not Confirm.ask("Continue anyway?", default=False):
                     return False
     

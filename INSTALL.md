@@ -4,14 +4,30 @@
 
 ---
 
-## Recommended: pip install (editable mode)
+## Recommended: virtual environment install
+
+Ubuntu 22.04+ and Debian 12+ enforce PEP 668, which blocks `pip install` on the system Python to protect OS-managed packages. A virtual environment sidesteps this cleanly and is the safest approach on any modern Linux server.
 
 ```bash
+git clone https://github.com/cptnfren/best-backup.git
 cd best-backup
+
+# Create and activate the venv (one-time)
+python3 -m venv .venv
+source .venv/bin/activate
+
+# Install in editable mode (source changes take effect immediately)
 pip install -e .
 ```
 
-Editable mode means any changes you make to the source take effect immediately without reinstalling. Both `bbackup` and `bbman` are registered as system commands.
+After activation, both `bbackup` and `bbman` are available for the lifetime of that shell session.
+
+To make the commands available in every new shell without manually activating the venv, add wrapper entries to your PATH:
+
+```bash
+# Add to ~/.bashrc or ~/.zshrc
+export PATH="$HOME/best-backup/.venv/bin:$PATH"
+```
 
 ```bash
 # Verify
@@ -21,30 +37,24 @@ bbackup --version
 bbman --version
 ```
 
----
-
-## Normal pip install (production / stable)
+If you prefer the venv to live outside the repo (e.g. under `~/.venvs/`):
 
 ```bash
-pip install .
+python3 -m venv ~/.venvs/bbackup
+source ~/.venvs/bbackup/bin/activate
+pip install -e /path/to/best-backup
 ```
 
-Copies files to site-packages. Requires reinstall to pick up source changes.
-
 ---
 
-## User install (no sudo required)
+## Production install (stable, no source edits needed)
+
+Same venv pattern, without editable mode:
 
 ```bash
-pip install --user -e .
-```
-
-Installs to `~/.local/bin`. If that directory is not on your PATH:
-
-```bash
-# Add to ~/.bashrc or ~/.zshrc
-export PATH="$HOME/.local/bin:$PATH"
-source ~/.bashrc
+python3 -m venv ~/.venvs/bbackup
+source ~/.venvs/bbackup/bin/activate
+pip install /path/to/best-backup
 ```
 
 ---
@@ -87,10 +97,17 @@ Add that export line to your shell profile to make it permanent.
 
 ## Uninstall
 
-If installed via pip:
+If installed into a venv, activate it first then uninstall:
 
 ```bash
+source .venv/bin/activate
 pip uninstall bbackup
+```
+
+To remove the entire venv:
+
+```bash
+rm -rf .venv
 ```
 
 If installed via symlinks:
@@ -114,41 +131,51 @@ python3 --version
 If you have multiple Python versions and need to target a specific one:
 
 ```bash
-python3.10 -m pip install -e .
+python3.10 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
 ---
 
 ## Troubleshooting
 
-**`bbackup: command not found` after pip install**
+**`bbackup: command not found` after install**
 
-Check that pip's bin directory is on your PATH:
+If you installed into a venv, make sure the venv is active (or its `bin/` directory is on your PATH):
 
 ```bash
-pip show bbackup | grep Location
-# Add that location's ../bin to PATH if needed
+source .venv/bin/activate
+which bbackup   # should now resolve
 ```
 
-Or try:
+Alternatively, add the venv bin dir to your shell profile permanently:
 
 ```bash
-pip install --user -e .
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
+echo 'export PATH="$HOME/best-backup/.venv/bin:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
 **Permission denied**
 
+Use a virtual environment (no sudo required):
+
 ```bash
-pip install --user -e .   # No sudo needed
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
+
+**`error: externally-managed-environment` on Ubuntu 22.04+ / Debian 12+**
+
+These distros block `pip install` on the system Python (PEP 668). Use a virtual environment as shown in the recommended install section above. Do not pass `--break-system-packages`; that flag bypasses OS safeguards and can corrupt system tools that depend on Python.
 
 **Packages fail to install**
 
-Make sure pip is up to date:
+Make sure pip is up to date inside your venv:
 
 ```bash
+source .venv/bin/activate
 pip install --upgrade pip
 pip install -e .
 ```
