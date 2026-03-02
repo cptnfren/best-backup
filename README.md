@@ -15,10 +15,14 @@
 ---
 
 ```bash
-git clone https://github.com/cptnfren/best-backup.git && cd best-backup && python3 -m venv .venv && source .venv/bin/activate && pip install -e .
+git clone https://github.com/cptnfren/best-backup.git
+cd best-backup
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
 ```
 
-> GitHub automatically adds a **copy button** to every code block above. One click, zero friction.
+See [Installation](#installation) for PATH setup and alternative methods.
 
 ---
 
