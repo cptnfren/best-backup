@@ -59,9 +59,11 @@ Every command speaks structured JSON, making it compatible with AI agents out of
 
 ## Installation
 
-`pipx` handles the virtual environment automatically. Pick the method that fits your setup:
+`pipx` handles the virtual environment automatically. Pick the method that fits your setup.
 
-**Single user:**
+### pipx install (single user)
+
+Use this when installing `bbackup` for the first time for your user only:
 
 ```bash
 sudo apt install pipx && pipx ensurepath
@@ -70,14 +72,34 @@ pipx install git+https://github.com/cptnfren/best-backup.git
 
 Open a new shell and both commands are ready.
 
-**Server / all users** (installs to `/usr/local/bin`, available to every user and cron jobs):
+### pipx upgrade (single user)
+
+If `bbackup` is already installed via pipx and you just want to move to a newer version:
+
+```bash
+pipx upgrade bbackup
+```
+
+Use `pipx reinstall bbackup` if you want a fresh virtual environment.
+
+### pipx install (server / all users)
+
+Installs to `/usr/local/bin` and makes `bbackup` and `bbman` available to every user and cron job:
 
 ```bash
 sudo apt install pipx
 sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-For development installs, manual venv setup, updates, and uninstall instructions, see [INSTALL.md](INSTALL.md).
+### pipx upgrade (server / all users)
+
+If `bbackup` is already installed system-wide via pipx and you want to update in place:
+
+```bash
+sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx upgrade bbackup
+```
+
+For development installs, manual venv setup, and uninstall instructions, see [INSTALL.md](INSTALL.md).
 
 ---
 

@@ -8,25 +8,22 @@
 
 `pipx` installs bbackup into an isolated virtual environment and wires `bbackup` and `bbman` into your PATH. You never have to activate anything.
 
+### Install (single user)
+
 ```bash
 # Install pipx (Ubuntu/Debian)
 sudo apt install pipx
 pipx ensurepath   # adds ~/.local/bin to PATH — one-time setup
-```
 
-Open a new shell (or run `source ~/.bashrc`), then:
-
-```bash
+# Install bbackup into a dedicated venv and add it to PATH
 pipx install git+https://github.com/cptnfren/best-backup.git
-```
 
-```bash
 # Verify
 bbackup --version
 bbman --version
 ```
 
-**Updating later:**
+### Update (single user)
 
 ```bash
 pipx upgrade bbackup
@@ -40,7 +37,7 @@ If you run `pipx install ...` again after `bbackup` is already installed, pipx p
 
 This is expected. Use `pipx upgrade bbackup` to pull a newer version, or `pipx reinstall bbackup` if you want a fresh virtual environment.
 
-**Uninstalling:**
+### Uninstall (single user)
 
 ```bash
 pipx uninstall bbackup
@@ -52,24 +49,24 @@ pipx uninstall bbackup
 
 The single-user method above installs only for the user who ran it. On a shared server, or when cron jobs run as root or another user, use the system-wide approach instead. It places `bbackup` and `bbman` in `/usr/local/bin`, which is on every user's PATH by default.
 
+### Install (server / all users)
+
 ```bash
 sudo apt install pipx
 sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install git+https://github.com/cptnfren/best-backup.git
-```
 
-```bash
 # Verify as any user
 bbackup --version
 bbman --version
 ```
 
-**Updating:**
+### Update (server / all users)
 
 ```bash
 sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx upgrade bbackup
 ```
 
-**Uninstalling:**
+### Uninstall (server / all users)
 
 ```bash
 sudo PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx uninstall bbackup
