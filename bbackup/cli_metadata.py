@@ -388,11 +388,434 @@ _register_bbackup(
 )
 
 
-# NOTE: For brevity, other bbackup commands (list-containers, list-backup-sets,
-# list-filesystem-sets, list-backups, list-remote-backups, init-config,
-# init-encryption, skills) will be added to BBACKUP_COMMANDS following the same
-# pattern during implementation. The generator and CLI wiring will treat this
-# registry as the single source of truth.
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="list-containers",
+        summary="List all Docker containers.",
+        description="List Docker containers with id, name, status, and image for inspection or backup planning.",
+        category="inspect",
+        parameters=[
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                json_key=None,
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List all containers with JSON details.",
+                cli="bbackup list-containers --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="list-backup-sets",
+        summary="List available backup sets.",
+        description="List named backup sets from config with containers and scope.",
+        category="inspect",
+        parameters=[
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List backup sets with JSON output.",
+                cli="bbackup list-backup-sets --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="list-backups",
+        summary="List available local backups.",
+        description="List local backup directories in the staging directory or a specified location.",
+        category="inspect",
+        parameters=[
+            Parameter(
+                name="backup_dir",
+                kind="flag",
+                type="path",
+                description="Backup directory to list (default: staging directory).",
+                cli_flag="--backup-dir",
+                json_key="backup_dir",
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List local backups with JSON output.",
+                cli="bbackup list-backups --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="list-remote-backups",
+        summary="List backups stored on a configured remote.",
+        description="List available backups on a configured remote storage destination.",
+        category="inspect",
+        parameters=[
+            Parameter(
+                name="remote",
+                kind="flag",
+                type="string",
+                description="Remote storage name to list backups from.",
+                cli_flag="--remote",
+                json_key="remote",
+                required=True,
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List remote backups on a given remote.",
+                cli="bbackup list-remote-backups --remote gdrive --output json",
+                input_json={"remote": "gdrive", "output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="list-filesystem-sets",
+        summary="List configured filesystem backup sets.",
+        description="List filesystem backup sets defined in config with targets and excludes.",
+        category="inspect",
+        parameters=[
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List filesystem backup sets with JSON output.",
+                cli="bbackup list-filesystem-sets --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="init-config",
+        summary="Initialize configuration file from the bundled example template.",
+        description="Create an example config.yaml in ~/.config/bbackup/ from the bundled template.",
+        category="lifecycle",
+        parameters=[
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Initialize a starter config file.",
+                cli="bbackup init-config --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="init-encryption",
+        summary="Initialize encryption keys for backup at-rest protection.",
+        description="Generate symmetric and/or asymmetric keys for encrypting backups at rest and return a config snippet.",
+        category="encryption",
+        parameters=[
+            Parameter(
+                name="method",
+                kind="flag",
+                type="string",
+                description="Encryption method to use.",
+                cli_flag="--method",
+                json_key="method",
+                allowed_values=["symmetric", "asymmetric", "both"],
+                shape="enum",
+                default="symmetric",
+            ),
+            Parameter(
+                name="key_path",
+                kind="flag",
+                type="path",
+                description="Directory to save key(s) (default: ~/.config/bbackup/).",
+                cli_flag="--key-path",
+                json_key="key_path",
+            ),
+            Parameter(
+                name="password",
+                kind="flag",
+                type="string",
+                description="Password for key encryption (optional).",
+                cli_flag="--password",
+                json_key="password",
+            ),
+            Parameter(
+                name="algorithm",
+                kind="flag",
+                type="string",
+                description="Algorithm for asymmetric keys.",
+                cli_flag="--algorithm",
+                json_key="algorithm",
+                allowed_values=["rsa-4096", "ecdsa-p384"],
+                shape="enum",
+                default="rsa-4096",
+            ),
+            Parameter(
+                name="upload_github",
+                kind="flag",
+                type="bool",
+                description="Remind about uploading public key to GitHub.",
+                cli_flag="--upload-github",
+                json_key="upload_github",
+                default=False,
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Generate asymmetric keys with JSON output.",
+                cli="bbackup init-encryption --method asymmetric --algorithm rsa-4096 --output json",
+                input_json={"method": "asymmetric", "algorithm": "rsa-4096", "output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbackup(
+    CliCommand(
+        cli="bbackup",
+        name="skills",
+        summary="List available bbackup skills for AI agent discovery.",
+        description="List or inspect bbackup skills in JSON or Markdown formats.",
+        category="skills",
+        parameters=[
+            Parameter(
+                name="skill_id",
+                kind="positional",
+                type="string",
+                description="Optional skill id for detailed view.",
+            ),
+            Parameter(
+                name="format",
+                kind="flag",
+                type="string",
+                description="Output as JSON or Markdown skills catalog.",
+                cli_flag="--format",
+                json_key="format",
+                allowed_values=["json", "markdown"],
+                shape="enum",
+                default="json",
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format for detailed skill view (text or json).",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List all bbackup skills in JSON.",
+                cli="bbackup skills",
+            ),
+            Example(
+                description="Dump the full Markdown skills catalog.",
+                cli="bbackup skills --format markdown",
+            ),
+        ],
+    )
+)
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +893,14 @@ _register_bbman(
         category="lifecycle",
         parameters=[
             Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
                 name="output",
                 kind="flag",
                 type="string",
@@ -498,10 +929,565 @@ _register_bbman(
 )
 
 
-# NOTE: As with BBACKUP_COMMANDS, additional bbman commands (check-deps,
-# validate-config, status, cleanup, diagnostics, check-updates, update,
-# repo-url, run, skills) will be incrementally added to BBMAN_COMMANDS with
-# the same structure during implementation.
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="check-deps",
+        summary="Check and optionally install missing dependencies.",
+        description="Check required and optional system and Python dependencies, optionally installing missing ones.",
+        category="lifecycle",
+        parameters=[
+            Parameter(
+                name="install",
+                kind="flag",
+                type="bool",
+                description="Install missing packages.",
+                cli_flag="--install",
+                json_key="install",
+                default=False,
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Check dependencies only.",
+                cli="bbman check-deps --output json",
+                input_json={"output": "json"},
+            ),
+            Example(
+                description="Check and install missing dependencies.",
+                cli="bbman check-deps --install --output json",
+                input_json={"install": True, "output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="validate-config",
+        summary="Validate configuration file.",
+        description="Validate config.yaml and report backup sets, remotes, and encryption status.",
+        category="lifecycle",
+        parameters=[
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Validate configuration file with JSON output.",
+                cli="bbman validate-config --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="status",
+        summary="Show backup status and history.",
+        description="Show backup statistics and history, suitable for both humans and agents.",
+        category="lifecycle",
+        parameters=[
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Show backup status with JSON output.",
+                cli="bbman status --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="cleanup",
+        summary="Cleanup old files and backups.",
+        description="Remove old staging, log, backup, and temp files according to retention parameters.",
+        category="maintenance",
+        parameters=[
+            Parameter(
+                name="staging_days",
+                kind="flag",
+                type="int",
+                description="Keep staging files newer than N days (default 7).",
+                cli_flag="--staging-days",
+                json_key="staging_days",
+                default=7,
+            ),
+            Parameter(
+                name="log_days",
+                kind="flag",
+                type="int",
+                description="Keep log files newer than N days (default 30).",
+                cli_flag="--log-days",
+                json_key="log_days",
+                default=30,
+            ),
+            Parameter(
+                name="no_backups",
+                kind="flag",
+                type="bool",
+                description="Do not cleanup old backups.",
+                cli_flag="--no-backups",
+                json_key="no_backups",
+                default=False,
+            ),
+            Parameter(
+                name="no_temp",
+                kind="flag",
+                type="bool",
+                description="Do not cleanup temporary files.",
+                cli_flag="--no-temp",
+                json_key="no_temp",
+                default=False,
+            ),
+            Parameter(
+                name="yes",
+                kind="flag",
+                type="bool",
+                description="Skip confirmation prompt.",
+                cli_flag="--yes",
+                json_key="yes",
+                default=False,
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Cleanup with default retention settings and JSON output.",
+                cli="bbman cleanup --yes --output json",
+                input_json={"yes": True, "output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="diagnostics",
+        summary="Run diagnostics and optionally save report to file.",
+        description="Run diagnostics and optionally save a detailed report to file for troubleshooting.",
+        category="maintenance",
+        parameters=[
+            Parameter(
+                name="report_file",
+                kind="flag",
+                type="path",
+                description="Save diagnostics report to this file path.",
+                cli_flag="--report-file",
+                json_key="report_file",
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Run diagnostics and return JSON summary.",
+                cli="bbman diagnostics --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="check-updates",
+        summary="Check for updates (file-level comparison with checksums).",
+        description="Check whether the installed version is behind the configured repository.",
+        category="updates",
+        parameters=[
+            Parameter(
+                name="branch",
+                kind="flag",
+                type="string",
+                description="Branch to check (default: main).",
+                cli_flag="--branch",
+                json_key="branch",
+                default="main",
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Check for updates on main branch.",
+                cli="bbman check-updates --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="update",
+        summary="Update application files.",
+        description="Update the local installation from the configured repository using git or download methods.",
+        category="updates",
+        parameters=[
+            Parameter(
+                name="branch",
+                kind="flag",
+                type="string",
+                description="Branch to update from (default: main).",
+                cli_flag="--branch",
+                json_key="branch",
+                default="main",
+            ),
+            Parameter(
+                name="method",
+                kind="flag",
+                type="string",
+                description="Update method (git or download).",
+                cli_flag="--method",
+                json_key="method",
+                allowed_values=["git", "download"],
+                shape="enum",
+                default="git",
+            ),
+            Parameter(
+                name="yes",
+                kind="flag",
+                type="bool",
+                description="Skip confirmation prompt.",
+                cli_flag="--yes",
+                json_key="yes",
+                default=False,
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Update non-interactively using git.",
+                cli="bbman update --yes --output json",
+                input_json={"yes": True, "output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="repo-url",
+        summary="Show or set the repository URL override.",
+        description="Show or update the repository URL used for update checks and downloads.",
+        category="updates",
+        parameters=[
+            Parameter(
+                name="url",
+                kind="flag",
+                type="string",
+                description="Set repository URL override.",
+                cli_flag="--url",
+                json_key="url",
+            ),
+            Parameter(
+                name="skills",
+                kind="flag",
+                type="bool",
+                description="Show skills documentation for this command and exit.",
+                cli_flag="--skills",
+                default=False,
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+            Parameter(
+                name="input_json",
+                kind="json_field",
+                type="object",
+                description="Flat JSON object providing all parameters.",
+                shape="object",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Show current repository URL in JSON.",
+                cli="bbman repo-url --output json",
+                input_json={"output": "json"},
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="run",
+        summary="Run bbackup commands through the bbman wrapper.",
+        description="Launch the main bbackup CLI through bbman, preserving JSON envelope behavior when requested.",
+        category="integration",
+        parameters=[
+            Parameter(
+                name="command",
+                kind="positional",
+                type="string[]",
+                description="The bbackup command and arguments to run.",
+                cli_flag=None,
+                json_key=None,
+                shape="list",
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format: text or json.",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+        ],
+        examples=[
+            Example(
+                description="Run a backup through bbman with JSON output.",
+                cli="bbman run backup --containers myapp --no-interactive --output json",
+            ),
+        ],
+    )
+)
+
+
+_register_bbman(
+    CliCommand(
+        cli="bbman",
+        name="skills",
+        summary="List available bbman skills for AI agent discovery.",
+        description="List or inspect bbman skills in JSON or Markdown formats.",
+        category="skills",
+        parameters=[
+            Parameter(
+                name="skill_id",
+                kind="positional",
+                type="string",
+                description="Optional skill id for detailed view.",
+            ),
+            Parameter(
+                name="format",
+                kind="flag",
+                type="string",
+                description="Output as JSON or Markdown skills catalog.",
+                cli_flag="--format",
+                json_key="format",
+                allowed_values=["json", "markdown"],
+                shape="enum",
+                default="json",
+            ),
+            Parameter(
+                name="output",
+                kind="flag",
+                type="string",
+                description="Output format for detailed skill view (text or json).",
+                cli_flag="--output",
+                json_key="output",
+                allowed_values=["text", "json"],
+                shape="enum",
+            ),
+        ],
+        examples=[
+            Example(
+                description="List all bbman skills in JSON.",
+                cli="bbman skills",
+            ),
+            Example(
+                description="Dump the full Markdown skills catalog.",
+                cli="bbman skills --format markdown",
+            ),
+        ],
+    )
+)
 
 
 def get_command_registry(cli: CliName) -> Dict[str, CliCommand]:

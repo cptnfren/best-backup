@@ -3,16 +3,88 @@
     "end": 70,
     "start": 7
   },
-  "bbackup:restore": {
-    "end": 127,
+  "bbackup:init-config": {
+    "end": 101,
     "start": 71
   },
+  "bbackup:init-encryption": {
+    "end": 137,
+    "start": 102
+  },
+  "bbackup:list-backup-sets": {
+    "end": 168,
+    "start": 138
+  },
+  "bbackup:list-backups": {
+    "end": 200,
+    "start": 169
+  },
+  "bbackup:list-containers": {
+    "end": 231,
+    "start": 201
+  },
+  "bbackup:list-filesystem-sets": {
+    "end": 262,
+    "start": 232
+  },
+  "bbackup:list-remote-backups": {
+    "end": 294,
+    "start": 263
+  },
+  "bbackup:restore": {
+    "end": 349,
+    "start": 295
+  },
+  "bbackup:skills": {
+    "end": 379,
+    "start": 350
+  },
+  "bbman:check-deps": {
+    "end": 421,
+    "start": 380
+  },
+  "bbman:check-updates": {
+    "end": 453,
+    "start": 422
+  },
+  "bbman:cleanup": {
+    "end": 489,
+    "start": 454
+  },
+  "bbman:diagnostics": {
+    "end": 521,
+    "start": 490
+  },
   "bbman:health": {
-    "end": 157,
-    "start": 128
+    "end": 552,
+    "start": 522
+  },
+  "bbman:repo-url": {
+    "end": 584,
+    "start": 553
+  },
+  "bbman:run": {
+    "end": 605,
+    "start": 585
   },
   "bbman:setup": {
-    "end": 188,
-    "start": 158
+    "end": 636,
+    "start": 606
+  },
+  "bbman:skills": {
+    "end": 664,
+    "start": 637
+  },
+  "bbman:status": {
+    "end": 695,
+    "start": 665
+  },
+  "bbman:update": {
+    "end": 729,
+    "start": 696
+  },
+  "bbman:validate-config": {
+    "end": 760,
+    "start": 730
   }
 }
