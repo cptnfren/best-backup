@@ -352,6 +352,36 @@ class TestDeleteBackup:
         result = r._delete_backup(remote, tmp_path, "backup_whatever")
         assert result is False
 
+    def test_local_file_backup_unlink(self, tmp_path):
+        r = make_rotation()
+        archive = tmp_path / "backup_20240101_120000.tar.gz"
+        archive.write_bytes(b"x")
+        remote = make_remote(type_="local")
+        result = r._delete_backup(remote, tmp_path, "backup_20240101_120000.tar.gz")
+        assert result is True
+        assert not archive.exists()
+
+
+# ---------------------------------------------------------------------------
+# TestParseBackupDate
+# ---------------------------------------------------------------------------
+
+
+class TestParseBackupDate:
+    def test_parse_strips_solid_archive_suffix(self):
+        r = make_rotation()
+        dt = r._parse_backup_date("backup_20240304_120000.tar.gz")
+        assert dt is not None
+        assert dt.year == 2024
+        assert dt.month == 3
+        assert dt.day == 4
+
+    def test_parse_strips_tar_gz_enc(self):
+        r = make_rotation()
+        dt = r._parse_backup_date("backup_20240304_120000.tar.gz.enc")
+        assert dt is not None
+        assert dt.day == 4
+
 
 # ---------------------------------------------------------------------------
 # TestCleanupOldBackups

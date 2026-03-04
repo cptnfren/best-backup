@@ -139,6 +139,7 @@ class Config:
         self.encryption = EncryptionSettings()
         self.scope = BackupScope()
         self.rclone_default_options: Optional[RcloneOptions] = None
+        self.solid_archive: bool = False
         
         if self.config_path and os.path.exists(self.config_path):
             self.load()
@@ -165,6 +166,7 @@ class Config:
         self.data = {
             "backup": {
                 "local_staging": "/tmp/bbackup_staging",
+                "solid_archive": False,
                 "compression": {"enabled": True, "level": 6, "format": "gzip"},
                 "default_scope": {
                     "containers": True,
@@ -197,9 +199,10 @@ class Config:
     
     def _parse_config(self):
         """Parse loaded configuration into dataclasses."""
-        # Parse backup scope
+        # Parse backup scope and solid_archive
         if "backup" in self.data:
             backup = self.data["backup"]
+            self.solid_archive = backup.get("solid_archive", False)
             if "default_scope" in backup:
                 scope = backup["default_scope"]
                 self.scope = BackupScope(
@@ -327,6 +330,18 @@ class Config:
     def get_staging_dir(self) -> str:
         """Get local staging directory."""
         return self.data.get("backup", {}).get("local_staging", "/tmp/bbackup_staging")
+
+    def get_backup_compression(self) -> Dict[str, Any]:
+        """
+        Return backup compression config with defaults for solid archive and metadata.
+        Keys: enabled (bool), level (int), format (str: gzip, bzip2, xz).
+        """
+        raw = self.data.get("backup", {}).get("compression", {})
+        return {
+            "enabled": raw.get("enabled", True),
+            "level": int(raw.get("level", 6)),
+            "format": raw.get("format", "gzip"),
+        }
     
     def get_backup_set(self, name: str) -> Optional[BackupSet]:
         """Get backup set by name."""

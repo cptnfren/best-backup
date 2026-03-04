@@ -159,6 +159,15 @@ _register_bbackup(
                 default=False,
             ),
             Parameter(
+                name="solid_archive",
+                kind="flag",
+                type="bool",
+                description="Create a single compressed tarball for upload (overrides config backup.solid_archive). Use --no-solid-archive to disable.",
+                cli_flag="--solid-archive/--no-solid-archive",
+                json_key="solid_archive_flag",
+                default=None,
+            ),
+            Parameter(
                 name="remote",
                 kind="flag",
                 type="string[]",

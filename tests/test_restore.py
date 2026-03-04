@@ -111,6 +111,14 @@ class TestListBackups:
         result = dr.list_backups(tmp_path)
         assert result[0]["name"] == "backup_20240201_000000"
 
+    def test_list_includes_solid_archive_files(self, mock_docker_client, tmp_path):
+        (tmp_path / "backup_20240304_120000.tar.gz").write_bytes(b"x")
+        dr = make_restore(mock_docker_client)
+        result = dr.list_backups(tmp_path)
+        assert len(result) == 1
+        assert result[0]["name"] == "backup_20240304_120000.tar.gz"
+        assert "2024-03-04" in result[0]["timestamp"]
+
 
 # ---------------------------------------------------------------------------
 # TestRestoreContainerConfig

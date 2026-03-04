@@ -6,6 +6,10 @@ backup:
   # Default backup directory (local staging area)
   local_staging: /tmp/bbackup_staging
   
+  # Create a single compressed tarball (and optionally encrypt it) before upload.
+  # When true, remotes receive one file instead of many; staging cleanup runs only after at least one successful upload.
+  # solid_archive: false
+  
   # Compression settings
   compression:
     enabled: true

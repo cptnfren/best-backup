@@ -8,6 +8,14 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
+## [1.7.0] - 2026-03-06
+
+### Added
+
+- Solid archive mode: optional single compressed tarball (and optional whole-file encryption) before upload so remotes receive one file instead of many. Config `backup.solid_archive` and CLI `--solid-archive` / `--no-solid-archive`. Restore accepts a backup path that is a file: it unpacks to a temp dir, restores selected items, then cleans up. Listing and retention treat directories and archive files (e.g. `backup_*.tar.gz`, `backup_*.tar.gz.enc`) the same. Staging cleanup runs only after at least one successful upload. See `config.yaml.example` and [docs/architecture.md](docs/architecture.md).
+
+---
+
 ## [1.6.0] - 2026-03-04
 
 ### Added
@@ -181,7 +189,8 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
-[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.6.0...HEAD
+[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.7.0...HEAD
+[1.7.0]: https://github.com/cptnfren/best-backup/compare/v1.6.0...v1.7.0
 [1.6.0]: https://github.com/cptnfren/best-backup/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/cptnfren/best-backup/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/cptnfren/best-backup/compare/v1.3.3...v1.4.0

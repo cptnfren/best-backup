@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import List
 from rich.console import Console
 
+from .archive import is_solid_archive_name
 from .config import RemoteStorage, Config, get_effective_rclone_options
 from .logging import get_logger
 
@@ -122,16 +123,25 @@ class RemoteStorageManager:
             # Setup SFTP
             sftp = ssh.open_sftp()
             
-            # Create remote directory if needed
-            try:
-                sftp.mkdir(remote_path)
-            except IOError:
-                pass  # Directory might already exist
-            
-            # Upload files
             if local_path.is_file():
-                sftp.put(str(local_path), f"{remote_path}/{local_path.name}")
-            elif local_path.is_dir():
+                # remote_path is full destination path (e.g. path/backup_20260304.tar.gz); create parent only (Gap 1)
+                parts = remote_path.rstrip("/").split("/")
+                for i in range(1, len(parts)):
+                    parent = "/".join(parts[:i])
+                    if parent:
+                        try:
+                            sftp.stat(parent)
+                        except IOError:
+                            try:
+                                sftp.mkdir(parent)
+                            except IOError:
+                                pass
+                sftp.put(str(local_path), remote_path)
+            else:
+                try:
+                    sftp.mkdir(remote_path)
+                except IOError:
+                    pass
                 self._upload_directory_sftp(sftp, local_path, remote_path)
             
             sftp.close()
@@ -160,29 +170,24 @@ class RemoteStorageManager:
         local_path: Path,
         remote_path: str,
     ) -> bool:
-        """Copy to local directory (for testing)."""
+        """Copy to local directory (or single file when backup is solid archive)."""
         try:
             dest = Path(os.path.expanduser(remote_path))
-            dest.mkdir(parents=True, exist_ok=True)
-            
             if local_path.is_file():
-                shutil.copy2(local_path, dest / local_path.name)
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(local_path, dest)
             elif local_path.is_dir():
-                dest_dir = dest / local_path.name
-                # Use copytree with ignore for socket files and other special files
+                dest.mkdir(parents=True, exist_ok=True)
                 def ignore_special_files(src, names):
                     ignored = []
                     for name in names:
                         src_path = Path(src) / name
-                        # Skip socket files, broken symlinks, and other special files
                         if src_path.is_socket() or (src_path.is_symlink() and not src_path.exists()):
                             ignored.append(name)
                     return ignored
-                
-                if dest_dir.exists():
-                    shutil.rmtree(dest_dir)
-                shutil.copytree(local_path, dest_dir, ignore=ignore_special_files, dirs_exist_ok=True)
-            
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(local_path, dest, ignore=ignore_special_files, dirs_exist_ok=True)
             return True
         except Exception as e:
             self.console.print(f"[red]Error copying to local: {e}[/red]")
@@ -249,12 +254,18 @@ class RemoteStorageManager:
         return []
     
     def _list_local_backups(self, remote: RemoteStorage) -> List[str]:
-        """List backups in local directory."""
+        """List backups in local directory (directories and solid archive files)."""
         try:
             backup_dir = Path(os.path.expanduser(remote.path))
-            if backup_dir.exists():
-                return [d.name for d in backup_dir.iterdir() if d.is_dir()]
+            if not backup_dir.exists():
+                return []
+            names = []
+            for item in backup_dir.iterdir():
+                if item.is_dir():
+                    names.append(item.name)
+                elif item.is_file() and is_solid_archive_name(item.name):
+                    names.append(item.name)
+            return names
         except Exception:
             pass
-        
         return []

@@ -1,6 +1,6 @@
 # CLI skills catalog
 
-> Generated from the bbackup/bbman CLI metadata. Version: 1.6.0. This catalog is authoritative for this version.
+> Generated from the bbackup/bbman CLI metadata. Version: 1.7.0. This catalog is authoritative for this version.
 
 ## bbackup
 
@@ -21,6 +21,7 @@ Back up one or more Docker containers and optional filesystem paths. Supports in
 | `--no-networks` | `bool` | no | `False` | Skip network backups. |
 | `--incremental` | `bool` | no | `False` | Enable incremental backup via rsync --link-dest. |
 | `--no-interactive` | `bool` | no | `False` | Disable TUI and prompts; required for agent use. |
+| `--solid-archive/--no-solid-archive` | `bool` | no | `` | Create a single compressed tarball for upload (overrides config backup.solid_archive). Use --no-solid-archive to disable. |
 | `--remote` | `string[]` | no | `` | Remote storage destinations (repeatable). |
 | `--paths` | `string[]` | no | `` | Filesystem paths to back up (repeatable). |
 | `--exclude` | `string[]` | no | `` | Exclude patterns for filesystem backup (repeatable). |

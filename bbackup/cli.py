@@ -9,6 +9,7 @@ Last Updated: 2026-03-04
 
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from datetime import datetime
@@ -23,6 +24,7 @@ from .config import Config, BackupScope, FilesystemTarget
 from .docker_backup import DockerBackup
 from .tui import BackupTUI, BackupStatus
 from .remote import RemoteStorageManager
+from .archive import create_solid_archive
 from .backup_runner import BackupRunner
 from .restore import DockerRestore
 from .logging import setup_logging
@@ -90,6 +92,8 @@ def cli(ctx, config):
 @click.option("--paths", "-p", multiple=True, metavar="PATH", help="Filesystem paths to back up (repeatable)")
 @click.option("--exclude", multiple=True, metavar="PATTERN", help="Exclude patterns for filesystem backup (repeatable)")
 @click.option("--filesystem-set", default=None, help="Named filesystem backup set from config")
+@click.option("--solid-archive/--no-solid-archive", "solid_archive_flag", default=None,
+              help="Create a single tarball for upload, or disable (overrides config).")
 @click.option(
     "--skills",
     is_flag=True,
@@ -112,6 +116,7 @@ def backup(
     paths,
     exclude,
     filesystem_set,
+    solid_archive_flag,
     skills,
     output,
     input_json,
@@ -133,6 +138,7 @@ def backup(
     paths = ctx.params.get("paths", paths)
     exclude = ctx.params.get("exclude", exclude)
     filesystem_set = ctx.params.get("filesystem_set", filesystem_set)
+    solid_archive_flag = ctx.params.get("solid_archive_flag", solid_archive_flag)
     dry_run = ctx.params.get("dry_run", dry_run)
 
     config: Config = ctx.obj["config"]
@@ -254,12 +260,15 @@ def backup(
 
     status = BackupStatus()
     runner = BackupRunner(config, status)
+    use_solid_archive = solid_archive_flag if solid_archive_flag is not None else config.solid_archive
 
     # Gap 8: capture run_backup result
     run_results = {}
 
     def backup_operation():
         nonlocal backup_dir, backup_name, run_results
+        upload_path = backup_dir
+        original_backup_dir = backup_dir
         try:
             status.status = "running"
             run_results = runner.run_backup(
@@ -270,15 +279,35 @@ def backup(
                 filesystem_targets=filesystem_targets,
             ) or {}
 
-            if config.encryption.enabled and status.status != "cancelled":
-                original_backup_dir = backup_dir
-                encrypted_backup_dir = runner.encrypt_backup_directory(backup_dir)
-                if encrypted_backup_dir != original_backup_dir:
-                    backup_dir = encrypted_backup_dir
-                    backup_name = encrypted_backup_dir.name
+            if use_solid_archive and status.status != "cancelled":
+                status.update(action="Creating archive...", item="")
+                compression_cfg = config.get_backup_compression()
+                enc_cfg = config.encryption if config.encryption.enabled else None
+                if enc_cfg:
+                    status.update(action="Encrypting archive...", item="")
+                upload_path = create_solid_archive(backup_dir, compression_cfg, enc_cfg)
+                backup_name = upload_path.name
+                if remotes_to_use:
+                    runner.upload_to_remotes(upload_path, backup_name, remotes_to_use)
+                any_ok = any(st == "success" for st in (status.remote_status or {}).values())
+                if any_ok:
+                    try:
+                        if original_backup_dir.exists():
+                            shutil.rmtree(original_backup_dir)
+                        if upload_path.exists():
+                            upload_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+            else:
+                if config.encryption.enabled and status.status != "cancelled" and not use_solid_archive:
+                    original_backup_dir = backup_dir
+                    encrypted_backup_dir = runner.encrypt_backup_directory(backup_dir)
+                    if encrypted_backup_dir != original_backup_dir:
+                        backup_dir = encrypted_backup_dir
+                        backup_name = encrypted_backup_dir.name
 
-            if remotes_to_use and status.status != "cancelled":
-                runner.upload_to_remotes(backup_dir, backup_name, remotes_to_use)
+                if remotes_to_use and status.status != "cancelled":
+                    runner.upload_to_remotes(backup_dir, backup_name, remotes_to_use)
 
             if status.status != "cancelled":
                 status.status = "completed"

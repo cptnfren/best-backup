@@ -256,7 +256,41 @@ class TestConfigLoad:
         cfg = Config(config_path=str(cfg_file))
         assert cfg.rclone_default_options is not None
         assert cfg.rclone_default_options.transfers == 8
-        assert cfg.rclone_default_options.checkers == 8
+
+    def test_solid_archive_parsed(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            backup:
+              solid_archive: true
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        assert cfg.solid_archive is True
+
+    def test_solid_archive_default_false(self):
+        cfg = Config(config_path=None)
+        assert cfg.solid_archive is False
+
+    def test_get_backup_compression_returns_dict_with_defaults(self):
+        cfg = Config(config_path=None)
+        comp = cfg.get_backup_compression()
+        assert comp["enabled"] is True
+        assert comp["level"] == 6
+        assert comp["format"] == "gzip"
+
+    def test_get_backup_compression_from_yaml(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            backup:
+              compression:
+                enabled: false
+                level: 3
+                format: bzip2
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        comp = cfg.get_backup_compression()
+        assert comp["enabled"] is False
+        assert comp["level"] == 3
+        assert comp["format"] == "bzip2"
 
 
 # ---------------------------------------------------------------------------

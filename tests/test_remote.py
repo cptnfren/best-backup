@@ -44,7 +44,9 @@ class TestLocalStorage:
         src.write_bytes(b"data")
         dest_dir = tmp_path / "dest"
         remote = make_remote(type_="local", path=str(dest_dir))
-        result = mgr.upload_to_local(remote, src, str(dest_dir))
+        # For file upload, remote_path is full path (path/backup_name)
+        remote_path = str(dest_dir / "backup.tar.gz")
+        result = mgr.upload_to_local(remote, src, remote_path)
         assert result is True
         assert (dest_dir / "backup.tar.gz").exists()
 
@@ -100,6 +102,19 @@ class TestLocalListing:
         assert "backup_001" in backups
         assert "backup_002" in backups
         assert "notadir.txt" not in backups
+
+    def test_list_includes_solid_archive_files(self, tmp_path):
+        mgr = make_manager()
+        (tmp_path / "backup_20240304_120000").mkdir()
+        (tmp_path / "backup_20240304_120000.tar.gz").write_bytes(b"x")
+        (tmp_path / "backup_20240304_120001.tar.gz.enc").write_bytes(b"y")
+        (tmp_path / "other.txt").write_bytes(b"z")
+        remote = make_remote(type_="local", path=str(tmp_path))
+        backups = mgr._list_local_backups(remote)
+        assert "backup_20240304_120000" in backups
+        assert "backup_20240304_120000.tar.gz" in backups
+        assert "backup_20240304_120001.tar.gz.enc" in backups
+        assert "other.txt" not in backups
 
     def test_empty_dir_returns_empty(self, tmp_path):
         mgr = make_manager()

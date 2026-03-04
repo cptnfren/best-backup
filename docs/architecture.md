@@ -93,9 +93,8 @@ Orchestrates the full backup workflow:
 init → select items → prepare staging dir
   → backup configs → backup volumes → backup networks
   → backup filesystem paths (if filesystem_targets provided)
-  → [archive metadata - TODO: create_metadata_archive() exists but not yet wired in]
-  → encrypt (if enabled)
-  → upload to remotes
+  → [if solid_archive] create_solid_archive → optionally encrypt whole file → upload file → cleanup staging only after success
+  → [else] encrypt dir (if enabled) → upload dir to remotes
   → rotate old backups
   → report
 ```
@@ -111,9 +110,13 @@ Backs up arbitrary host filesystem paths and directory trees using rsync directl
 - Incremental mode uses `--link-dest` pointing at the most recent previous `backup_YYYYMMDD_HHMMSS` sibling directory that contains the same target name. The current run directory is always excluded from the scan so a backup never links to itself
 - Progress output is streamed line-by-line to the caller's callback for live TUI updates
 
+### `bbackup/archive.py`
+
+Solid-archive support: creates a single compressed tarball from a backup directory and optionally encrypts the whole file. Exposes `create_solid_archive()`, `unpack_solid_archive()`, and naming helpers `is_solid_archive_name()`, `strip_solid_archive_suffix()` used by list/rotation/restore. When solid archive is enabled, the backup flow tars the staging dir, compresses it (using `backup.compression`), and optionally encrypts the result so remotes receive one file. Staging cleanup runs only after at least one successful upload.
+
 ### `bbackup/restore.py`
 
-Reads a backup directory and restores containers, volumes, networks, and filesystem paths. Supports renaming on restore (`--rename old:new`). Handles decryption before restore when the backup is encrypted.
+Reads a backup directory or a solid archive file and restores containers, volumes, networks, and filesystem paths. When the backup path is a file (e.g. `.tar.gz` or `.tar.gz.enc`), unpacks to a temp dir, runs the same restore logic, then removes the temp dir. Supports renaming on restore (`--rename old:new`). Handles decryption (per-dir or whole-archive for solid archives) before restore.
 
 ### `bbackup/tui.py`
 

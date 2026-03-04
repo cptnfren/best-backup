@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from rich.console import Console
 
+from .archive import is_solid_archive_name, strip_solid_archive_suffix
 from .config import (
     Config,
     RetentionPolicy,
@@ -112,10 +113,9 @@ class BackupRotation:
         return [b["name"] for b in to_keep], [b["name"] for b in to_delete]
     
     def _parse_backup_date(self, backup_name: str) -> Optional[datetime]:
-        """Parse backup date from backup name."""
-        # Expected format: backup_YYYYMMDD_HHMMSS or similar
+        """Parse backup date from backup name (strip solid-archive suffix first)."""
+        backup_name = strip_solid_archive_suffix(backup_name)
         try:
-            # Try to extract date from name
             parts = backup_name.split("_")
             for part in parts:
                 if len(part) == 8 and part.isdigit():  # YYYYMMDD
@@ -225,12 +225,15 @@ class BackupRotation:
         return deleted_count
     
     def _delete_backup(self, remote: RemoteStorage, remote_path: Path, backup_name: str) -> bool:
-        """Delete a single backup from remote."""
+        """Delete a single backup from remote (file or directory)."""
         if remote.type == "local":
             backup_path = remote_path / backup_name
             if backup_path.exists():
                 import shutil
-                shutil.rmtree(backup_path)
+                if backup_path.is_file():
+                    backup_path.unlink(missing_ok=True)
+                else:
+                    shutil.rmtree(backup_path)
                 return True
         elif remote.type == "rclone":
             try:
@@ -240,18 +243,29 @@ class BackupRotation:
                     if self.config
                     else RcloneOptions()
                 )
-                cmd = [
-                    "rclone",
-                    "purge",
-                    f"{remote.remote_name}:{remote.path}/{backup_name}",
-                    "--transfers",
-                    str(opts.transfers),
-                    "--checkers",
-                    str(opts.checkers),
-                ]
+                rclone_path = f"{remote.remote_name}:{remote.path}/{backup_name}"
+                if is_solid_archive_name(backup_name):
+                    cmd = [
+                        "rclone",
+                        "deletefile",
+                        rclone_path,
+                        "--transfers",
+                        str(opts.transfers),
+                        "--checkers",
+                        str(opts.checkers),
+                    ]
+                else:
+                    cmd = [
+                        "rclone",
+                        "purge",
+                        rclone_path,
+                        "--transfers",
+                        str(opts.transfers),
+                        "--checkers",
+                        str(opts.checkers),
+                    ]
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 return result.returncode == 0
             except Exception:
                 pass
-        
         return False

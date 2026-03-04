@@ -3,8 +3,9 @@ Docker restore functionality.
 Handles restoring containers, volumes, networks, and metadata from backups.
 """
 
-import os
 import json
+import os
+import shutil
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
@@ -12,6 +13,7 @@ from datetime import datetime
 import docker
 from docker.errors import DockerException, APIError
 
+from .archive import is_solid_archive_name, strip_solid_archive_suffix, unpack_solid_archive
 from .config import Config
 from .logging import get_logger
 from .encryption import EncryptionManager
@@ -32,14 +34,13 @@ class DockerRestore:
             raise RuntimeError(f"Failed to connect to Docker: {e}")
     
     def list_backups(self, backup_dir: Path) -> List[Dict]:
-        """List available backups in backup directory."""
+        """List available backups in backup directory (dirs and solid archive files)."""
         backups = []
         if not backup_dir.exists():
             return backups
-        
-        for backup_path in sorted(backup_dir.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+        items = list(backup_dir.iterdir())
+        for backup_path in sorted(items, key=lambda x: x.stat().st_mtime if x.exists() else 0, reverse=True):
             if backup_path.is_dir() and backup_path.name.startswith("backup_"):
-                # Try to read metadata
                 metadata_file = backup_path / "backup_metadata.json"
                 timestamp = None
                 if metadata_file.exists():
@@ -49,22 +50,21 @@ class DockerRestore:
                             timestamp = metadata.get("timestamp")
                     except Exception:
                         pass
-                
-                # Parse timestamp from name if metadata not available
                 if not timestamp:
                     try:
-                        # backup_YYYYMMDD_HHMMSS
                         name_part = backup_path.name.replace("backup_", "")
                         timestamp = datetime.strptime(name_part, "%Y%m%d_%H%M%S").isoformat()
                     except Exception:
                         timestamp = backup_path.name
-                
-                backups.append({
-                    "name": backup_path.name,
-                    "path": backup_path,
-                    "timestamp": timestamp,
-                })
-        
+                backups.append({"name": backup_path.name, "path": backup_path, "timestamp": timestamp})
+            elif backup_path.is_file() and is_solid_archive_name(backup_path.name):
+                try:
+                    base = strip_solid_archive_suffix(backup_path.name)
+                    name_part = base.replace("backup_", "")
+                    timestamp = datetime.strptime(name_part, "%Y%m%d_%H%M%S").isoformat()
+                except Exception:
+                    timestamp = backup_path.name
+                backups.append({"name": backup_path.name, "path": backup_path, "timestamp": timestamp})
         return backups
     
     def restore_container_config(self, container_name: str, backup_path: Path, new_name: Optional[str] = None) -> bool:
@@ -324,61 +324,82 @@ class DockerRestore:
         filesystem_destination: Optional[Path] = None,
         rename_map: Optional[Dict[str, str]] = None,
     ) -> Dict[str, any]:
-        """Restore complete backup."""
+        """Restore complete backup (from directory or solid archive file)."""
         backup_path = Path(backup_path)
+        temp_root_to_remove: Optional[Path] = None
 
-        # Decrypt backup if encrypted
-        backup_path = self.decrypt_backup_directory(backup_path)
+        if backup_path.is_file() and is_solid_archive_name(backup_path.name):
+            if backup_path.name.endswith(".enc") or ".enc" in backup_path.suffixes:
+                if not self.config.encryption.enabled:
+                    raise ValueError(
+                        "Backup file is encrypted; set encryption.enabled to true and ensure keys are configured."
+                    )
+            unpacked, temp_root_to_remove = unpack_solid_archive(
+                backup_path,
+                dest_dir=None,
+                encryption_config=self.config.encryption if self.config.encryption.enabled else None,
+            )
+            backup_path = unpacked
 
-        rename_map = rename_map or {}
+        try:
+            # Decrypt backup dir if encrypted (per-file; no-op for unpacked solid archive)
+            backup_path = self.decrypt_backup_directory(backup_path)
 
-        results = {
-            "containers": {},
-            "volumes": {},
-            "networks": {},
-            "filesystems": {},
-            "errors": [],
-        }
+            rename_map = rename_map or {}
 
-        # Restore containers
-        if containers is not None:
-            configs_dir = backup_path / "configs"
-            if configs_dir.exists():
-                for container_name in containers:
-                    new_name = rename_map.get(container_name)
-                    success = self.restore_container_config(container_name, backup_path, new_name)
-                    results["containers"][container_name] = "success" if success else "failed"
+            results = {
+                "containers": {},
+                "volumes": {},
+                "networks": {},
+                "filesystems": {},
+                "errors": [],
+            }
+
+            # Restore containers
+            if containers is not None:
+                configs_dir = backup_path / "configs"
+                if configs_dir.exists():
+                    for container_name in containers:
+                        new_name = rename_map.get(container_name)
+                        success = self.restore_container_config(container_name, backup_path, new_name)
+                        results["containers"][container_name] = "success" if success else "failed"
+                        if not success:
+                            results["errors"].append(f"Failed to restore container: {container_name}")
+
+            # Restore volumes
+            if volumes is not None:
+                volumes_dir = backup_path / "volumes"
+                if volumes_dir.exists():
+                    for volume_name in volumes:
+                        new_name = rename_map.get(volume_name)
+                        success = self.restore_volume(volume_name, backup_path, new_name)
+                        results["volumes"][volume_name] = "success" if success else "failed"
+                        if not success:
+                            results["errors"].append(f"Failed to restore volume: {volume_name}")
+
+            # Restore networks
+            if networks is not None:
+                networks_dir = backup_path / "networks"
+                if networks_dir.exists():
+                    for network_name in networks:
+                        new_name = rename_map.get(network_name)
+                        success = self.restore_network(network_name, backup_path, new_name)
+                        results["networks"][network_name] = "success" if success else "failed"
+                        if not success:
+                            results["errors"].append(f"Failed to restore network: {network_name}")
+
+            # Restore filesystem paths
+            if filesystems is not None:
+                for target_name in filesystems:
+                    success = self.restore_filesystem_path(target_name, backup_path, filesystem_destination)
+                    results["filesystems"][target_name] = "success" if success else "failed"
                     if not success:
-                        results["errors"].append(f"Failed to restore container: {container_name}")
+                        results["errors"].append(f"Failed to restore filesystem: {target_name}")
 
-        # Restore volumes
-        if volumes is not None:
-            volumes_dir = backup_path / "volumes"
-            if volumes_dir.exists():
-                for volume_name in volumes:
-                    new_name = rename_map.get(volume_name)
-                    success = self.restore_volume(volume_name, backup_path, new_name)
-                    results["volumes"][volume_name] = "success" if success else "failed"
-                    if not success:
-                        results["errors"].append(f"Failed to restore volume: {volume_name}")
-
-        # Restore networks
-        if networks is not None:
-            networks_dir = backup_path / "networks"
-            if networks_dir.exists():
-                for network_name in networks:
-                    new_name = rename_map.get(network_name)
-                    success = self.restore_network(network_name, backup_path, new_name)
-                    results["networks"][network_name] = "success" if success else "failed"
-                    if not success:
-                        results["errors"].append(f"Failed to restore network: {network_name}")
-
-        # Restore filesystem paths
-        if filesystems is not None:
-            for target_name in filesystems:
-                success = self.restore_filesystem_path(target_name, backup_path, filesystem_destination)
-                results["filesystems"][target_name] = "success" if success else "failed"
-                if not success:
-                    results["errors"].append(f"Failed to restore filesystem: {target_name}")
-
-        return results
+            return results
+        finally:
+            if temp_root_to_remove is not None and temp_root_to_remove.exists():
+                try:
+                    shutil.rmtree(temp_root_to_remove)
+                except OSError:
+                    pass
