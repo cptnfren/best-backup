@@ -18,7 +18,7 @@
 pipx install git+https://github.com/cptnfren/best-backup.git
 ```
 
-`pipx` handles the virtual environment automatically. See [Installation](#installation) if you need to install `pipx` first, or for alternative methods.
+`pipx` handles the virtual environment automatically. If `bbackup` is already installed and you want to move to a newer version, use `pipx upgrade bbackup` (or the system-wide variant from [Installation](#installation)) instead of re-running `pipx install`. See [Installation](#installation) if you need to install `pipx` first, or for alternative methods.
 
 ---
 

@@ -32,6 +32,14 @@ bbman --version
 pipx upgrade bbackup
 ```
 
+If you run `pipx install ...` again after `bbackup` is already installed, pipx prints a message like:
+
+```text
+'bbackup' already seems to be installed. Not modifying existing installation. Pass '--force' to force installation.
+```
+
+This is expected. Use `pipx upgrade bbackup` to pull a newer version, or `pipx reinstall bbackup` if you want a fresh virtual environment.
+
 **Uninstalling:**
 
 ```bash
