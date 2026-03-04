@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+---
+
+## [1.6.0] - 2026-03-04
+
 ### Added
 
 - Rclone transfer and concurrency options: config-driven `transfers` and `checkers` for all rclone operations (upload, list, size, purge). Per-remote optional `rclone_options` and optional top-level `rclone.default_options`; recommended defaults 8/8, cap 32. See `config.yaml.example` and [docs/architecture.md](docs/architecture.md#rclone-options).
@@ -177,7 +181,8 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ---
 
-[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.5.0...HEAD
+[Unreleased]: https://github.com/cptnfren/best-backup/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/cptnfren/best-backup/compare/v1.5.0...v1.6.0
 [1.5.0]: https://github.com/cptnfren/best-backup/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/cptnfren/best-backup/compare/v1.3.3...v1.4.0
 [1.3.3]: https://github.com/cptnfren/best-backup/compare/v1.3.2...v1.3.3
