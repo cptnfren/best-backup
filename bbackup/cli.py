@@ -4,7 +4,7 @@ Purpose: Main CLI entry point for bbackup. Provides all backup/restore subcomman
          with AI-agent-friendly JSON I/O via --output json, --input-json, --dry-run,
          and the `skills` subcommand for progressive capability discovery.
 Created: 2025-01-01
-Last Updated: 2026-02-27
+Last Updated: 2026-03-04
 """
 
 import json
@@ -43,6 +43,10 @@ from .cli_utils import (
     BBACKUP_NO_INTERACTIVE_ENV,
 )
 from .skills import get_skill
+
+
+SKILLS_DOC_PATH = Path(__file__).parent.parent / "docs" / "cli-skills.md"
+SKILLS_INDEX_PATH = Path(__file__).parent.parent / "docs" / "cli-skills-index.json"
 
 
 @click.group()
@@ -86,6 +90,11 @@ def cli(ctx, config):
 @click.option("--paths", "-p", multiple=True, metavar="PATH", help="Filesystem paths to back up (repeatable)")
 @click.option("--exclude", multiple=True, metavar="PATTERN", help="Exclude patterns for filesystem backup (repeatable)")
 @click.option("--filesystem-set", default=None, help="Named filesystem backup set from config")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @dry_run_option
@@ -103,11 +112,14 @@ def backup(
     paths,
     exclude,
     filesystem_set,
+    skills,
     output,
     input_json,
     dry_run,
 ):
     """Create Docker and/or filesystem backup."""
+    if skills:
+        _print_command_skills("bbackup", "backup")
     merge_json_input(ctx, input_json)
     # Re-read possibly overridden values from ctx.params
     containers = ctx.params.get("containers", containers)
@@ -343,6 +355,11 @@ def backup(
 @click.option("--filesystem", multiple=True, help="Filesystem target names to restore (repeatable)")
 @click.option("--filesystem-destination", type=click.Path(), default=None,
               help="Destination path for filesystem restore")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @dry_run_option
@@ -357,11 +374,14 @@ def restore(
     restore_all,
     filesystem,
     filesystem_destination,
+    skills,
     output,
     input_json,
     dry_run,
 ):
     """Restore Docker or filesystem backup."""
+    if skills:
+        _print_command_skills("bbackup", "restore")
     merge_json_input(ctx, input_json)
 
     config: Config = ctx.obj["config"]
@@ -478,11 +498,18 @@ def restore(
 # ---------------------------------------------------------------------------
 
 @cli.command("list-containers")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def list_containers(ctx, output, input_json):
+def list_containers(ctx, skills, output, input_json):
     """List all Docker containers."""
+    if skills:
+        _print_command_skills("bbackup", "list-containers")
     merge_json_input(ctx, input_json)
 
     config: Config = ctx.obj["config"]
@@ -526,11 +553,18 @@ def list_containers(ctx, output, input_json):
 # ---------------------------------------------------------------------------
 
 @cli.command("list-backup-sets")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def list_backup_sets(ctx, output, input_json):
+def list_backup_sets(ctx, skills, output, input_json):
     """List available backup sets."""
+    if skills:
+        _print_command_skills("bbackup", "list-backup-sets")
     merge_json_input(ctx, input_json)
 
     config: Config = ctx.obj["config"]
@@ -572,11 +606,18 @@ def list_backup_sets(ctx, output, input_json):
 @cli.command("list-backups")
 @click.option("--backup-dir", "-d", type=click.Path(exists=True, path_type=Path),
               help="Backup directory to list (default: staging directory)")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def list_backups(ctx, backup_dir, output, input_json):
+def list_backups(ctx, backup_dir, skills, output, input_json):
     """List available local backups."""
+    if skills:
+        _print_command_skills("bbackup", "list-backups")
     merge_json_input(ctx, input_json)
 
     config: Config = ctx.obj["config"]
@@ -618,11 +659,18 @@ def list_backups(ctx, backup_dir, output, input_json):
 
 @cli.command("list-remote-backups")
 @click.option("--remote", "-r", required=True, help="Remote storage name to list backups from")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def list_remote_backups(ctx, remote, output, input_json):
+def list_remote_backups(ctx, remote, skills, output, input_json):
     """List available backups on remote storage."""
+    if skills:
+        _print_command_skills("bbackup", "list-remote-backups")
     merge_json_input(ctx, input_json)
 
     config: Config = ctx.obj["config"]
@@ -663,11 +711,18 @@ def list_remote_backups(ctx, remote, output, input_json):
 # ---------------------------------------------------------------------------
 
 @cli.command("list-filesystem-sets")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def list_filesystem_sets(ctx, output, input_json):
+def list_filesystem_sets(ctx, skills, output, input_json):
     """List configured filesystem backup sets."""
+    if skills:
+        _print_command_skills("bbackup", "list-filesystem-sets")
     merge_json_input(ctx, input_json)
 
     config: Config = ctx.obj["config"]
@@ -709,11 +764,18 @@ def list_filesystem_sets(ctx, output, input_json):
 # ---------------------------------------------------------------------------
 
 @cli.command("init-config")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def init_config(ctx, output, input_json):
+def init_config(ctx, skills, output, input_json):
     """Initialize configuration file from the bundled example template."""
+    if skills:
+        _print_command_skills("bbackup", "init-config")
     merge_json_input(ctx, input_json)
 
     console: Console = ctx.obj["console"]
@@ -750,11 +812,18 @@ def init_config(ctx, output, input_json):
 @click.option("--algorithm", type=click.Choice(["rsa-4096", "ecdsa-p384"]), default="rsa-4096",
               help="Algorithm for asymmetric keys")
 @click.option("--upload-github", is_flag=True, help="Remind about uploading public key to GitHub")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def init_encryption(ctx, method, key_path, password, algorithm, upload_github, output, input_json):
+def init_encryption(ctx, method, key_path, password, algorithm, upload_github, skills, output, input_json):
     """Initialize encryption keys for backup at-rest protection."""
+    if skills:
+        _print_command_skills("bbackup", "init-encryption")
     merge_json_input(ctx, input_json)
 
     console: Console = ctx.obj["console"]
@@ -833,9 +902,20 @@ def init_encryption(ctx, method, key_path, password, algorithm, upload_github, o
 
 @cli.command("skills")
 @click.argument("skill_id", required=False)
+@click.option(
+    "--format",
+    "format_",
+    type=click.Choice(["json", "markdown"]),
+    default="json",
+    help="Output as JSON (default) or Markdown skills catalog.",
+)
 @output_option
-def skills(skill_id, output):
-    """List available skills for AI agent discovery. Pass SKILL_ID for step-by-step detail."""
+def skills(skill_id, format_, output):
+    """List available skills for AI agent discovery, or dump the Markdown skills catalog."""
+    if format_ == "markdown":
+        _print_skills_markdown()
+        return
+
     result = get_skill("bbackup", skill_id)
     if result is None:
         json_error(
@@ -858,6 +938,45 @@ def skills(skill_id, output):
             console_inst.print("\nExamples:")
             for ex in result.get("examples", []):
                 console_inst.print(f"  [dim]{ex}[/dim]")
+
+
+def _print_command_skills(cli_name: str, command_name: str) -> None:
+    """
+    Print the skills documentation section for a specific CLI command and exit.
+    """
+    if not SKILLS_DOC_PATH.exists() or not SKILLS_INDEX_PATH.exists():
+        sys.stderr.write("Skills documentation has not been generated yet.\n")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+    try:
+        index = json.loads(SKILLS_INDEX_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        sys.stderr.write(f"Failed to read skills index: {exc}\n")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+    cmd_id = f"{cli_name}:{command_name}"
+    meta = index.get(cmd_id)
+    if not meta:
+        sys.stderr.write(f"No skills entry found for command {cmd_id}.\n")
+        sys.exit(EXIT_USER_ERROR)
+
+    lines = SKILLS_DOC_PATH.read_text(encoding="utf-8").splitlines()
+    start = max(int(meta.get("start", 1)) - 1, 0)
+    end = min(int(meta.get("end", len(lines))), len(lines))
+    section = "\n".join(lines[start:end]) + "\n"
+    sys.stdout.write(section)
+    sys.exit(EXIT_SUCCESS)
+
+
+def _print_skills_markdown() -> None:
+    """
+    Print the full Markdown skills catalog to stdout and exit.
+    """
+    if not SKILLS_DOC_PATH.exists():
+        sys.stderr.write("Skills documentation has not been generated yet.\n")
+        sys.exit(EXIT_SYSTEM_ERROR)
+    sys.stdout.write(SKILLS_DOC_PATH.read_text(encoding="utf-8"))
+    sys.exit(EXIT_SUCCESS)
 
 
 # ---------------------------------------------------------------------------

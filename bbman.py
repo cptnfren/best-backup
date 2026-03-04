@@ -6,7 +6,7 @@ Purpose: bbackup Management Wrapper. Provides setup, health, dependency,
          AI-agent-friendly JSON I/O via --output json, --input-json, and
          the `skills` subcommand for progressive capability discovery.
 Created: 2025-01-01
-Last Updated: 2026-02-27
+Last Updated: 2026-03-04
 """
 
 import json
@@ -38,6 +38,10 @@ from bbackup.cli_utils import (
     BBACKUP_NO_INTERACTIVE_ENV,
 )
 from bbackup.skills import get_skill
+
+
+SKILLS_DOC_PATH = Path(__file__).parent / "docs" / "cli-skills.md"
+SKILLS_INDEX_PATH = Path(__file__).parent / "docs" / "cli-skills-index.json"
 
 # Default repository URL: auto-detected from git remote, then placeholder.
 # Set BBACKUP_REPO_URL env var or run `bbman repo-url --url URL` to override.
@@ -139,11 +143,18 @@ def setup(ctx, no_interactive, output, input_json):
 # ---------------------------------------------------------------------------
 
 @cli.command()
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def health(ctx, output, input_json):
+def health(ctx, skills, output, input_json):
     """Run comprehensive health check (Docker, rsync, rclone, Python packages)."""
+    if skills:
+        _print_command_skills("bbman", "health")
     merge_json_input(ctx, input_json)
 
     try:
@@ -174,11 +185,18 @@ def health(ctx, output, input_json):
 
 @cli.command("check-deps")
 @click.option("--install", "-i", is_flag=True, help="Install missing packages")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def check_deps(ctx, install, output, input_json):
+def check_deps(ctx, install, skills, output, input_json):
     """Check and optionally install missing dependencies."""
+    if skills:
+        _print_command_skills("bbman", "check-deps")
     merge_json_input(ctx, input_json)
 
     try:
@@ -216,11 +234,18 @@ def check_deps(ctx, install, output, input_json):
 # ---------------------------------------------------------------------------
 
 @cli.command("validate-config")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def validate_config(ctx, output, input_json):
+def validate_config(ctx, skills, output, input_json):
     """Validate configuration file."""
+    if skills:
+        _print_command_skills("bbman", "validate-config")
     merge_json_input(ctx, input_json)
 
     try:
@@ -269,11 +294,18 @@ def validate_config(ctx, output, input_json):
 # ---------------------------------------------------------------------------
 
 @cli.command()
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def status(ctx, output, input_json):
+def status(ctx, skills, output, input_json):
     """Show backup status and history."""
+    if skills:
+        _print_command_skills("bbman", "status")
     merge_json_input(ctx, input_json)
 
     try:
@@ -322,11 +354,18 @@ def status(ctx, output, input_json):
 @click.option("--no-backups", is_flag=True, help="Don't cleanup old backups")
 @click.option("--no-temp", is_flag=True, help="Don't cleanup temporary files")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def cleanup(ctx, staging_days, log_days, no_backups, no_temp, yes, output, input_json):
+def cleanup(ctx, staging_days, log_days, no_backups, no_temp, yes, skills, output, input_json):
     """Cleanup old files and backups."""
+    if skills:
+        _print_command_skills("bbman", "cleanup")
     merge_json_input(ctx, input_json)
 
     # In JSON mode skip interactive confirmation automatically
@@ -389,11 +428,18 @@ def cleanup(ctx, staging_days, log_days, no_backups, no_temp, yes, output, input
     type=click.Path(),
     help="Save diagnostics report to this file path",
 )
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def diagnostics(ctx, report_file, output, input_json):
+def diagnostics(ctx, report_file, skills, output, input_json):
     """Run diagnostics and optionally save report to file."""
+    if skills:
+        _print_command_skills("bbman", "diagnostics")
     merge_json_input(ctx, input_json)
 
     try:
@@ -430,11 +476,18 @@ def diagnostics(ctx, report_file, output, input_json):
 
 @cli.command("check-updates")
 @click.option("--branch", default="main", help="Branch to check (default: main)")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def check_updates(ctx, branch, output, input_json):
+def check_updates(ctx, branch, skills, output, input_json):
     """Check for updates (file-level comparison with checksums)."""
+    if skills:
+        _print_command_skills("bbman", "check-updates")
     merge_json_input(ctx, input_json)
 
     try:
@@ -490,11 +543,18 @@ def check_updates(ctx, branch, output, input_json):
 @click.option("--branch", default="main", help="Branch to update from (default: main)")
 @click.option("--method", type=click.Choice(["git", "download"]), default="git", help="Update method")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def update(ctx, branch, method, yes, output, input_json):
+def update(ctx, branch, method, yes, skills, output, input_json):
     """Update application files."""
+    if skills:
+        _print_command_skills("bbman", "update")
     merge_json_input(ctx, input_json)
 
     # In JSON mode skip interactive confirmation automatically
@@ -563,11 +623,18 @@ def update(ctx, branch, method, yes, output, input_json):
 
 @cli.command("repo-url")
 @click.option("--url", help="Set repository URL override")
+@click.option(
+    "--skills",
+    is_flag=True,
+    help="Show skills documentation for this command and exit.",
+)
 @output_option
 @input_json_option
 @click.pass_context
-def repo_url(ctx, url, output, input_json):
+def repo_url(ctx, url, skills, output, input_json):
     """Show or set the repository URL override."""
+    if skills:
+        _print_command_skills("bbman", "repo-url")
     merge_json_input(ctx, input_json)
 
     try:
@@ -667,9 +734,20 @@ def run(ctx, command, output):
 
 @cli.command("skills")
 @click.argument("skill_id", required=False)
+@click.option(
+    "--format",
+    "format_",
+    type=click.Choice(["json", "markdown"]),
+    default="json",
+    help="Output as JSON (default) or Markdown skills catalog.",
+)
 @output_option
-def skills(skill_id, output):
-    """List available skills for AI agent discovery. Pass SKILL_ID for step-by-step detail."""
+def skills(skill_id, format_, output):
+    """List available skills for AI agent discovery, or dump the Markdown skills catalog."""
+    if format_ == "markdown":
+        _print_skills_markdown()
+        return
+
     result = get_skill("bbman", skill_id)
     if result is None:
         json_error(
@@ -689,6 +767,45 @@ def skills(skill_id, output):
             console.print("\nExamples:")
             for ex in result.get("examples", []):
                 console.print(f"  [dim]{ex}[/dim]")
+
+
+def _print_command_skills(cli_name: str, command_name: str) -> None:
+    """
+    Print the skills documentation section for a specific CLI command and exit.
+    """
+    if not SKILLS_DOC_PATH.exists() or not SKILLS_INDEX_PATH.exists():
+        console.print("[red]Skills documentation has not been generated yet.[/red]")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+    try:
+        index = json.loads(SKILLS_INDEX_PATH.read_text(encoding="utf-8"))
+    except Exception as exc:
+        console.print(f"[red]Failed to read skills index: {exc}[/red]")
+        sys.exit(EXIT_SYSTEM_ERROR)
+
+    cmd_id = f"{cli_name}:{command_name}"
+    meta = index.get(cmd_id)
+    if not meta:
+        console.print(f"[red]No skills entry found for command {cmd_id}.[/red]")
+        sys.exit(EXIT_USER_ERROR)
+
+    lines = SKILLS_DOC_PATH.read_text(encoding="utf-8").splitlines()
+    start = max(int(meta.get("start", 1)) - 1, 0)
+    end = min(int(meta.get("end", len(lines))), len(lines))
+    section = "\n".join(lines[start:end]) + "\n"
+    sys.stdout.write(section)
+    sys.exit(EXIT_SUCCESS)
+
+
+def _print_skills_markdown() -> None:
+    """
+    Print the full Markdown skills catalog to stdout and exit.
+    """
+    if not SKILLS_DOC_PATH.exists():
+        console.print("[red]Skills documentation has not been generated yet.[/red]")
+        sys.exit(EXIT_SYSTEM_ERROR)
+    sys.stdout.write(SKILLS_DOC_PATH.read_text(encoding="utf-8"))
+    sys.exit(EXIT_SUCCESS)
 
 
 # ---------------------------------------------------------------------------

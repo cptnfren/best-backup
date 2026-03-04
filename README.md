@@ -260,16 +260,18 @@ export BBACKUP_NO_INTERACTIVE=1      # no TUI, no prompts, no pagers
 | `BBACKUP_OUTPUT=json` | All commands emit JSON envelope without `--output json` |
 | `BBACKUP_NO_INTERACTIVE=1` | Suppresses TUI, prompts, and pagers system-wide |
 
-### Skill discovery
+### Skill discovery (JSON and Markdown)
 
 ```bash
-bbackup skills                    # level-0: all skill IDs + summaries
-bbackup skills docker-backup      # level-1: steps, schemas, examples
-bbman skills
-bbman skills maintenance
+bbackup skills                           # level-0: all skill IDs + summaries (JSON)
+bbackup skills docker-backup             # level-1: steps, schemas, examples (JSON)
+bbackup skills --format markdown         # full Markdown skills catalog
+bbman skills                             # level-0 skills for bbman (JSON)
+bbman skills maintenance                 # maintenance skill (JSON)
+bbman skills --format markdown           # full Markdown skills catalog
 ```
 
-Level-0 output:
+Level-0 JSON output:
 
 ```json
 {
@@ -437,6 +439,7 @@ best-backup/
 | [CHANGELOG.md](CHANGELOG.md) | Release history |
 | [CONTRIBUTING.md](.github/CONTRIBUTING.md) | How to contribute |
 | [SECURITY.md](SECURITY.md) | How to report vulnerabilities |
+| [docs/cli-skills.md](docs/cli-skills.md) | Unified CLI skills catalog for humans and AI agents |
 
 ---
 

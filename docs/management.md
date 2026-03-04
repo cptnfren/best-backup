@@ -198,14 +198,15 @@ Arguments pass through directly to `bbackup`. With `--output json`, the subproce
 Discover what `bbman` can do. Useful for AI agents performing progressive capability discovery.
 
 ```bash
-bbman skills                     # Level-0: list all skill ids and summaries
-bbman skills setup               # Level-1: step-by-step guide + JSON schemas
+bbman skills                     # Level-0: list all skill ids and summaries (JSON)
+bbman skills setup               # Level-1: step-by-step guide + JSON schemas (JSON)
 bbman skills maintenance
 bbman skills updates
 bbman skills dependencies
+bbman skills --format markdown   # Full Markdown skills catalog (all commands)
 ```
 
-Level-0 output includes an `agent_hint` field pointing agents to the recommended env vars and `--input-json` usage.
+Level-0 JSON output includes an `agent_hint` field pointing agents to the recommended env vars and `--input-json` usage.
 
 ---
 
@@ -218,8 +219,14 @@ Level-0 output includes an `agent_hint` field pointing agents to the recommended
 export BBACKUP_OUTPUT=json
 export BBACKUP_NO_INTERACTIVE=1
 
-# Discover capabilities
+# Discover capabilities (JSON)
 bbman skills
+
+# Discover capabilities (Markdown)
+bbman skills --format markdown
+
+# Per-command skills docs
+bbman health --skills
 
 # Run with structured input/output
 bbman health --output json

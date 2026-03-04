@@ -162,6 +162,10 @@ Public keys can be referenced by path, URL, or GitHub shortcut (`github:USER/gis
 | `cleanup.py` | Staging dir and log cleanup |
 | `utils.py` | Shared utilities |
 
+### `bbackup/cli_metadata.py`
+
+Structured metadata registry describing all `bbackup` and `bbman` commands, parameters, JSON fields, and examples. Drives the JSON skills output, the generated `docs/cli-skills.md` catalog, and future tooling.
+
 ---
 
 ## Configuration system

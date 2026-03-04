@@ -74,6 +74,10 @@ jobs:
           name: coverage-${{ matrix.python-version }}
           path: coverage.xml
 
+      - name: Verify CLI skills docs are up to date
+        run: |
+          python scripts/generate_cli_skills.py --check
+
   integration-test:
     name: Integration tests
     needs: test

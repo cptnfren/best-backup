@@ -10,13 +10,19 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 - `is_venv()` helper in `bbackup/management/dependencies.py`: detects whether the current Python is running inside a virtual environment by checking `sys.real_prefix` and `sys.base_prefix`
 - PEP 668 guard in `install_python_packages()`: on Ubuntu 22.04+ and Debian 12+ (externally-managed system Python), the function now prints a clear activation message and returns `False` instead of letting pip fail with an unhelpful error
+- `bbackup/cli_metadata.py`: unified metadata layer describing CLI commands, parameters, JSON fields, and examples for `bbackup` and `bbman`
+- `scripts/generate_cli_skills.py`: generator for `docs/cli-skills.md` and `docs/cli-skills-index.json`, producing a versioned CLI skills catalog from metadata
+- `docs/cli-skills.md`: agent-friendly, generated skills catalog for all core `bbackup`/`bbman` commands, with CLI + JSON examples
+- Per-command `--skills` flags on core `bbackup`/`bbman` commands to print their skills section from `docs/cli-skills.md`
+- CI step in `.github/workflows/ci.yml` that runs `python scripts/generate_cli_skills.py --check` to ensure skills docs are up to date
 
 ### Changed
 
 - `bbackup/management/setup_wizard.py`: the "Install missing packages?" branch now delegates to `install_python_packages()` from `dependencies.py` instead of calling `subprocess.run(pip install ...)` directly, consolidating the venv check and error handling in one place
-- `INSTALL.md`: virtual environment install is now the recommended method; added dedicated PEP 668 troubleshooting section; updated all "user install" and "packages fail" tips to reflect venv-first workflow
-- `QUICKSTART.md` Step 1: installation example updated to create and activate a venv before `pip install -e .`
-- `README.md` installation section: updated to show venv-based install and PATH configuration; removed bare `pip install git+...` one-liner
+- `INSTALL.md`: pipx is now the recommended install method; dedicated PEP 668 troubleshooting section points users to pipx; manual venv install documented for development use
+- `QUICKSTART.md` Step 1: installation example updated to use pipx, with a server-wide pipx variant for shared installs
+- `README.md` installation section: updated to show pipx-based install for single user and server-wide setups, pointing to `INSTALL.md` for alternatives
+- `README.md` and `docs/README.md`: link the new `docs/cli-skills.md` catalog from the documentation tables
 
 ---
 
