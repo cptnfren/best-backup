@@ -143,8 +143,8 @@ def check_up_to_date() -> bool:
     if not DOC_PATH.exists() or not INDEX_PATH.exists():
         return False
 
-    # Generate into memory and compare
-    lines_before = DOC_PATH.read_text(encoding="utf-8").splitlines()
+    # Generate into memory and compare (normalize newlines and trailing blanks)
+    text_before = DOC_PATH.read_text(encoding="utf-8").replace("\r\n", "\n").rstrip("\n")
     with open(INDEX_PATH, "r", encoding="utf-8") as f:
         index_before = json.load(f)
 
@@ -171,8 +171,8 @@ def check_up_to_date() -> bool:
         meta["end"] = next_start - 1
         index[cmd_id] = meta
 
-    content_after = "\n".join(lines).splitlines()
-    if content_after != lines_before:
+    text_after = "\n".join(lines).replace("\r\n", "\n").rstrip("\n")
+    if text_after != text_before:
         return False
     if index != index_before:
         return False

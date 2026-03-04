@@ -110,7 +110,12 @@ class TestShouldKeepBackup:
     def test_monthly_not_kept_if_not_first(self):
         r = make_rotation()
         d = datetime.now() - timedelta(days=31)
-        not_first = d.replace(day=15)
+        first = d.replace(day=1)
+        # Pick a non-first day in the same month and make sure it is not Sunday
+        # so it will not be selected by the weekly Sunday rule either.
+        not_first = first + timedelta(days=1)
+        if not_first.weekday() == 6:  # Sunday
+            not_first = not_first + timedelta(days=1)
         assert r.should_keep_backup(not_first) is False
 
 

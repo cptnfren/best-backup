@@ -121,14 +121,37 @@ def is_venv() -> bool:
     )
 
 
+def is_externally_managed() -> bool:
+    """
+    Return True if this Python install is marked as externally managed (PEP 668).
+
+    Modern Debian/Ubuntu ship an EXTERNALLY-MANAGED marker file alongside the
+    system Python. We only enable the "do not pip install here" guard when that
+    marker is present so that tests and non-PEP 668 environments can still
+    exercise the installer logic.
+    """
+    try:
+        major = sys.version_info.major
+        minor = sys.version_info.minor
+        candidates = [
+            Path(sys.prefix) / "lib" / f"python{major}.{minor}" / "EXTERNALLY-MANAGED",
+            Path(sys.prefix) / "EXTERNALLY-MANAGED",
+        ]
+        return any(p.exists() for p in candidates)
+    except Exception:
+        return False
+
+
 def install_python_packages(packages: List[str]) -> bool:
     """
     Install Python packages using pip.
 
     On Ubuntu 22.04+ / Debian 12+ the system Python is externally managed
-    (PEP 668) and bare pip installs are blocked. If we are not inside a venv
-    we surface a clear message rather than letting pip fail with a confusing
-    error.
+    (PEP 668) and bare pip installs are blocked. If we detect an externally
+    managed Python and we are not inside a virtual environment, we surface a
+    clear message rather than letting pip fail with a confusing error. On
+    non-PEP 668 environments we allow the install to proceed (the call is
+    typically used from tests or explicit tooling).
 
     Args:
         packages: List of package names to install
@@ -136,7 +159,7 @@ def install_python_packages(packages: List[str]) -> bool:
     Returns:
         True if successful
     """
-    if not is_venv():
+    if is_externally_managed() and not is_venv():
         console.print(
             "[yellow]⚠ pip install skipped: the current Python is not inside a "
             "virtual environment.[/yellow]\n"
@@ -150,10 +173,13 @@ def install_python_packages(packages: List[str]) -> bool:
     try:
         subprocess.run(
             [sys.executable, "-m", "pip", "install"] + packages,
-            check=True
+            check=True,
         )
         return True
-    except subprocess.CalledProcessError:
+    except Exception as exc:
+        console.print(
+            f"[red]✗ pip install failed:[/red] [dim]{exc}[/dim]"
+        )
         return False
 
 
