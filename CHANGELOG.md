@@ -6,6 +6,10 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+### Added
+
+- Rclone transfer and concurrency options: config-driven `transfers` and `checkers` for all rclone operations (upload, list, size, purge). Per-remote optional `rclone_options` and optional top-level `rclone.default_options`; recommended defaults 8/8, cap 32. See `config.yaml.example` and [docs/architecture.md](docs/architecture.md#rclone-options).
+
 ---
 
 ## [1.5.0] - 2026-03-02

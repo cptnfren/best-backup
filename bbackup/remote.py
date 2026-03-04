@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import List
 from rich.console import Console
 
-from .config import RemoteStorage, Config
+from .config import RemoteStorage, Config, get_effective_rclone_options
 from .logging import get_logger
 
 logger = get_logger('remote')
@@ -42,7 +42,7 @@ class RemoteStorageManager:
         
         # Build rclone command
         rclone_path = f"{remote.remote_name}:{remote_path}"
-        
+        opts = get_effective_rclone_options(self.config, remote)
         cmd = [
             "rclone",
             "copy",
@@ -50,8 +50,11 @@ class RemoteStorageManager:
             rclone_path,
             "--progress",
             "--stats=1s",
+            "--transfers",
+            str(opts.transfers),
+            "--checkers",
+            str(opts.checkers),
         ]
-        
         if progress_callback:
             # Use rclone's JSON output for progress tracking
             cmd.append("--stats-log-level=NOTICE")
@@ -219,9 +222,17 @@ class RemoteStorageManager:
         """List backups on rclone remote."""
         if not remote.remote_name:
             return []
-        
+        opts = get_effective_rclone_options(self.config, remote)
         try:
-            cmd = ["rclone", "ls", f"{remote.remote_name}:{remote.path}"]
+            cmd = [
+                "rclone",
+                "ls",
+                f"{remote.remote_name}:{remote.path}",
+                "--transfers",
+                str(opts.transfers),
+                "--checkers",
+                str(opts.checkers),
+            ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if result.returncode == 0:
                 # Parse output to get backup names

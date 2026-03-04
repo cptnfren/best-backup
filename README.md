@@ -154,6 +154,8 @@ remotes:
     path: ~/backups/docker
 ```
 
+For rclone remotes you can optionally set `rclone_options.transfers` and `rclone_options.checkers` (or top-level `rclone.default_options`) to tune upload concurrency; both accept 1–32, default 8. See [config.yaml.example](config.yaml.example) and [docs/architecture.md](docs/architecture.md#rclone-options).
+
 ### Filesystem backup
 
 Add a `filesystem:` section to back up arbitrary host paths:

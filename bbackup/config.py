@@ -45,6 +45,36 @@ class FilesystemBackupSet:
     targets: List[FilesystemTarget] = field(default_factory=list)
 
 
+RCLONE_OPTIONS_CAP = 32
+RCLONE_DEFAULT_TRANSFERS = 8
+RCLONE_DEFAULT_CHECKERS = 8
+
+
+def _clamp_rclone_int(value: Any, name: str, default: int) -> int:
+    """Clamp a config value to [1, RCLONE_OPTIONS_CAP]; use default if invalid."""
+    if value is None:
+        return default
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        return default
+    if n < 1:
+        return 1
+    if n > RCLONE_OPTIONS_CAP:
+        return RCLONE_OPTIONS_CAP
+    return n
+
+
+@dataclass
+class RcloneOptions:
+    """
+    Rclone transfer and concurrency options.
+    Recommended defaults: transfers=8, checkers=8. Values are clamped to [1, 32].
+    """
+    transfers: int = RCLONE_DEFAULT_TRANSFERS
+    checkers: int = RCLONE_DEFAULT_CHECKERS
+
+
 @dataclass
 class RemoteStorage:
     """Remote storage configuration."""
@@ -60,6 +90,7 @@ class RemoteStorage:
     key_file: Optional[str] = None
     # rclone specific
     remote_name: Optional[str] = None
+    rclone_options: Optional[RcloneOptions] = None
 
 
 @dataclass
@@ -107,6 +138,7 @@ class Config:
         self.incremental = IncrementalSettings()
         self.encryption = EncryptionSettings()
         self.scope = BackupScope()
+        self.rclone_default_options: Optional[RcloneOptions] = None
         
         if self.config_path and os.path.exists(self.config_path):
             self.load()
@@ -213,9 +245,36 @@ class Config:
                 targets=targets,
             )
 
+        # Parse top-level rclone default options
+        if "rclone" in self.data:
+            rclone_data = self.data["rclone"]
+            if isinstance(rclone_data, dict) and "default_options" in rclone_data:
+                do = rclone_data["default_options"]
+                if isinstance(do, dict):
+                    self.rclone_default_options = RcloneOptions(
+                        transfers=_clamp_rclone_int(
+                            do.get("transfers"), "transfers", RCLONE_DEFAULT_TRANSFERS
+                        ),
+                        checkers=_clamp_rclone_int(
+                            do.get("checkers"), "checkers", RCLONE_DEFAULT_CHECKERS
+                        ),
+                    )
+
         # Parse remote storage
         if "remotes" in self.data:
             for name, remote_data in self.data["remotes"].items():
+                rclone_opts: Optional[RcloneOptions] = None
+                if remote_data.get("type") == "rclone" and "rclone_options" in remote_data:
+                    ro = remote_data["rclone_options"]
+                    if isinstance(ro, dict):
+                        rclone_opts = RcloneOptions(
+                            transfers=_clamp_rclone_int(
+                                ro.get("transfers"), "transfers", RCLONE_DEFAULT_TRANSFERS
+                            ),
+                            checkers=_clamp_rclone_int(
+                                ro.get("checkers"), "checkers", RCLONE_DEFAULT_CHECKERS
+                            ),
+                        )
                 self.remotes[name] = RemoteStorage(
                     name=name,
                     enabled=remote_data.get("enabled", False),
@@ -227,6 +286,7 @@ class Config:
                     user=remote_data.get("user"),
                     key_file=remote_data.get("key_file"),
                     remote_name=remote_data.get("remote_name"),
+                    rclone_options=rclone_opts,
                 )
         
         # Parse retention policy
@@ -275,3 +335,15 @@ class Config:
     def get_enabled_remotes(self) -> List[RemoteStorage]:
         """Get list of enabled remote storage destinations."""
         return [r for r in self.remotes.values() if r.enabled]
+
+
+def get_effective_rclone_options(config: "Config", remote: RemoteStorage) -> RcloneOptions:
+    """
+    Return effective rclone options for a remote: per-remote overrides global
+    default, which overrides built-in defaults (transfers=8, checkers=8).
+    """
+    if remote.rclone_options is not None:
+        return remote.rclone_options
+    if config.rclone_default_options is not None:
+        return config.rclone_default_options
+    return RcloneOptions()

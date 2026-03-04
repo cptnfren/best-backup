@@ -8,15 +8,27 @@ from typing import List, Dict, Optional
 from datetime import datetime
 from rich.console import Console
 
-from .config import RetentionPolicy, RemoteStorage
+from .config import (
+    Config,
+    RetentionPolicy,
+    RemoteStorage,
+    RcloneOptions,
+    get_effective_rclone_options,
+)
 
 
 class BackupRotation:
     """Manage backup rotation and retention."""
-    
-    def __init__(self, retention: RetentionPolicy, console: Console = None):
+
+    def __init__(
+        self,
+        retention: RetentionPolicy,
+        console: Console = None,
+        config: Optional[Config] = None,
+    ):
         self.retention = retention
         self.console = console or Console()
+        self.config = config
     
     def get_backup_age_category(self, backup_date: datetime) -> str:
         """Categorize backup by age."""
@@ -170,10 +182,23 @@ class BackupRotation:
         """Calculate storage for rclone remote."""
         if not remote.remote_name:
             return 0
-        
+        opts = (
+            get_effective_rclone_options(self.config, remote)
+            if self.config
+            else RcloneOptions()
+        )
         try:
             import subprocess
-            cmd = ["rclone", "size", f"{remote.remote_name}:{remote.path}", "--json"]
+            cmd = [
+                "rclone",
+                "size",
+                f"{remote.remote_name}:{remote.path}",
+                "--json",
+                "--transfers",
+                str(opts.transfers),
+                "--checkers",
+                str(opts.checkers),
+            ]
             result = subprocess.run(cmd, capture_output=True, text=True, check=False)
             if result.returncode == 0:
                 import json
@@ -210,7 +235,20 @@ class BackupRotation:
         elif remote.type == "rclone":
             try:
                 import subprocess
-                cmd = ["rclone", "purge", f"{remote.remote_name}:{remote.path}/{backup_name}"]
+                opts = (
+                    get_effective_rclone_options(self.config, remote)
+                    if self.config
+                    else RcloneOptions()
+                )
+                cmd = [
+                    "rclone",
+                    "purge",
+                    f"{remote.remote_name}:{remote.path}/{backup_name}",
+                    "--transfers",
+                    str(opts.transfers),
+                    "--checkers",
+                    str(opts.checkers),
+                ]
                 result = subprocess.run(cmd, capture_output=True, text=True, check=False)
                 return result.returncode == 0
             except Exception:

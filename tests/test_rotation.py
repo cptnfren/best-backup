@@ -6,12 +6,12 @@ Last Updated: 2026-02-26
 """
 
 import json
+import textwrap
 from datetime import datetime, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-
-from bbackup.config import RemoteStorage, RetentionPolicy
+from bbackup.config import Config, RemoteStorage, RetentionPolicy
 from bbackup.rotation import BackupRotation
 
 
@@ -279,6 +279,33 @@ class TestCalculateRcloneStorage:
         remote = make_remote(type_="rclone", remote_name=None)
         result = r._calculate_rclone_storage(remote)
         assert result == 0
+
+    def test_rclone_storage_uses_config_options_when_config_present(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            rclone:
+              default_options:
+                transfers: 10
+                checkers: 5
+            remotes:
+              r1:
+                enabled: true
+                type: rclone
+                remote_name: myremote
+                path: backups
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        ret = RetentionPolicy()
+        r = BackupRotation(retention=ret, config=cfg)
+        remote = cfg.remotes["r1"]
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout=json.dumps({"bytes": 0}), stderr="")
+            r._calculate_rclone_storage(remote)
+        call_cmd = mock_run.call_args[0][0]
+        assert "--transfers" in call_cmd
+        assert "10" in call_cmd
+        assert "--checkers" in call_cmd
+        assert "5" in call_cmd
 
 
 # ---------------------------------------------------------------------------

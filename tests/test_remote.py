@@ -4,8 +4,9 @@ Created: 2026-02-26
 Last Updated: 2026-02-26
 """
 
+import textwrap
+from pathlib import Path
 from unittest.mock import MagicMock, patch
-
 
 from bbackup.config import Config, RemoteStorage
 from bbackup.remote import RemoteStorageManager
@@ -242,6 +243,63 @@ class TestRclone:
         remote = make_remote(type_="rclone", remote_name=None)
         result = mgr._list_rclone_backups(remote)
         assert result == []
+
+    def test_upload_to_rclone_includes_transfers_and_checkers_from_config(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            remotes:
+              gdrive:
+                enabled: true
+                type: rclone
+                remote_name: myremote
+                path: backups
+                rclone_options:
+                  transfers: 12
+                  checkers: 6
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        mgr = RemoteStorageManager(config=cfg)
+        remote = cfg.remotes["gdrive"]
+        src = tmp_path / "backup"
+        src.mkdir()
+        with patch("shutil.which", return_value="/usr/bin/rclone"), \
+             patch("subprocess.Popen") as mock_popen:
+            proc = MagicMock()
+            proc.stdout.__iter__ = MagicMock(return_value=iter([]))
+            proc.wait.return_value = None
+            proc.returncode = 0
+            mock_popen.return_value = proc
+            mgr.upload_to_rclone(remote, src, "backups/bkp")
+        call_cmd = mock_popen.call_args[0][0]
+        assert "--transfers" in call_cmd
+        assert "12" in call_cmd
+        assert "--checkers" in call_cmd
+        assert "6" in call_cmd
+
+    def test_list_rclone_backups_includes_transfers_and_checkers_from_config(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            remotes:
+              gdrive:
+                enabled: true
+                type: rclone
+                remote_name: myremote
+                path: backups
+                rclone_options:
+                  transfers: 4
+                  checkers: 2
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        mgr = RemoteStorageManager(config=cfg)
+        remote = cfg.remotes["gdrive"]
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = MagicMock(returncode=0, stdout="", stderr="")
+            mgr._list_rclone_backups(remote)
+        call_cmd = mock_run.call_args[0][0]
+        assert "--transfers" in call_cmd
+        assert "4" in call_cmd
+        assert "--checkers" in call_cmd
+        assert "2" in call_cmd
 
 
 # ---------------------------------------------------------------------------

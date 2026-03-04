@@ -54,6 +54,12 @@ backup:
         configs: true
         networks: true
 
+# Optional: default rclone transfer options for all rclone remotes (per-remote overrides this)
+# rclone:
+#   default_options:
+#     transfers: 8   # parallel file transfers (1-32)
+#     checkers: 8   # parallel checkers for listing (1-32)
+
 # Remote Storage Destinations
 remotes:
   # Google Drive via rclone
@@ -63,7 +69,11 @@ remotes:
     remote_name: gdrive  # rclone remote name (must be configured separately)
     path: /backups/docker
     compression: true
-  
+    # Optional: tune transfer concurrency for this remote (overrides rclone.default_options)
+    # rclone_options:
+    #   transfers: 8
+    #   checkers: 8
+
   # SSH/SFTP Remote
   ssh_server:
     enabled: false

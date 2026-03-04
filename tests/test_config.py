@@ -17,7 +17,9 @@ from bbackup.config import (
     BackupSet,
     Config,
     EncryptionSettings,
+    get_effective_rclone_options,
     IncrementalSettings,
+    RcloneOptions,
     RemoteStorage,
     RetentionPolicy,
 )
@@ -219,6 +221,105 @@ class TestConfigLoad:
         r = cfg.remotes["myrclone"]
         assert r.type == "rclone"
         assert r.remote_name == "myremote"
+
+    def test_remote_rclone_options_parsed(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            remotes:
+              myrclone:
+                enabled: true
+                type: rclone
+                remote_name: myremote
+                rclone_options:
+                  transfers: 16
+                  checkers: 4
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        r = cfg.remotes["myrclone"]
+        assert r.rclone_options is not None
+        assert r.rclone_options.transfers == 16
+        assert r.rclone_options.checkers == 4
+
+    def test_rclone_default_options_parsed(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            rclone:
+              default_options:
+                transfers: 8
+                checkers: 8
+            remotes:
+              local:
+                enabled: true
+                type: local
+                path: /tmp/backups
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        assert cfg.rclone_default_options is not None
+        assert cfg.rclone_default_options.transfers == 8
+        assert cfg.rclone_default_options.checkers == 8
+
+
+# ---------------------------------------------------------------------------
+# TestGetEffectiveRcloneOptions
+# ---------------------------------------------------------------------------
+
+
+class TestGetEffectiveRcloneOptions:
+    def test_per_remote_overrides_global(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            rclone:
+              default_options:
+                transfers: 4
+                checkers: 4
+            remotes:
+              r1:
+                enabled: true
+                type: rclone
+                remote_name: r1
+                rclone_options:
+                  transfers: 16
+                  checkers: 8
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        remote = cfg.remotes["r1"]
+        opts = get_effective_rclone_options(cfg, remote)
+        assert opts.transfers == 16
+        assert opts.checkers == 8
+
+    def test_global_used_when_no_per_remote(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            rclone:
+              default_options:
+                transfers: 12
+                checkers: 6
+            remotes:
+              r1:
+                enabled: true
+                type: rclone
+                remote_name: r1
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        remote = cfg.remotes["r1"]
+        opts = get_effective_rclone_options(cfg, remote)
+        assert opts.transfers == 12
+        assert opts.checkers == 6
+
+    def test_builtin_default_when_nothing_set(self, tmp_path):
+        cfg_file = tmp_path / "config.yaml"
+        cfg_file.write_text(textwrap.dedent("""
+            remotes:
+              r1:
+                enabled: true
+                type: rclone
+                remote_name: r1
+        """))
+        cfg = Config(config_path=str(cfg_file))
+        remote = cfg.remotes["r1"]
+        opts = get_effective_rclone_options(cfg, remote)
+        assert opts.transfers == RcloneOptions().transfers
+        assert opts.checkers == RcloneOptions().checkers
 
 
 # ---------------------------------------------------------------------------

@@ -187,11 +187,20 @@ Config file provides defaults. CLI arguments override them at runtime. Interacti
 |---|---|
 | `backup` | Staging dir, backup sets, default scope |
 | `remotes` | Remote storage destinations |
+| `rclone` | Optional default `transfers`/`checkers` for all rclone remotes |
 | `retention` | Daily/weekly/monthly counts, quota |
 | `incremental` | Enable rsync `--link-dest` mode |
 | `logging` | Log path, level, rotation |
 | `encryption` | Method, key paths, algorithm |
 | `docker` | Socket path, timeout |
+
+### Rclone options
+
+For remotes with `type: rclone`, you can tune transfer concurrency so uploads use bandwidth more effectively. Options apply to all rclone operations (upload, list, size, purge) for that remote.
+
+- **Per-remote:** Under the remote, set optional `rclone_options` with `transfers` (parallel file transfers) and `checkers` (parallel checkers for listing). Both are integers from 1 to 32; recommended defaults are 8 and 8.
+- **Global default:** Top-level `rclone.default_options` sets defaults for all rclone remotes; per-remote `rclone_options` overrides it.
+- **Omitted:** If neither is set, bbackup uses transfers=8 and checkers=8.
 
 ---
 

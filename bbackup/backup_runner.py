@@ -25,7 +25,7 @@ class BackupRunner:
         self.status = status
         self.docker_backup = DockerBackup(config)
         self.remote_mgr = RemoteStorageManager(config)
-        self.rotation = BackupRotation(config.retention)
+        self.rotation = BackupRotation(config.retention, config=config)
     
     def run_backup(
         self,

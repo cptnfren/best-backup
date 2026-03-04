@@ -102,7 +102,7 @@ def cleanup_old_backups(config: Optional[Config] = None) -> Dict:
         config = Config()
     
     from ..rotation import BackupRotation
-    rotation = BackupRotation(config.retention)
+    rotation = BackupRotation(config.retention, config=config)
     
     # Get all backups
     from .status import list_local_backups
